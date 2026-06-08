@@ -6,11 +6,11 @@ on:
       bucket:
         description: GCS bucket name
         required: true
-        default: c7e-prod-static
+        default: c7e-prod-dungeon-demo
       prefix:
         description: Bucket prefix to deploy under
-        required: true
-        default: dungeon-demo
+        required: false
+        default: ""
       dry_run:
         description: Print rsync changes without writing
         required: true
@@ -59,7 +59,10 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          dst="gs://${BUCKET}/${PREFIX%/}"
+          dst="gs://${BUCKET}"
+          if [[ -n "$PREFIX" ]]; then
+            dst="${dst}/${PREFIX%/}"
+          fi
           flags=(-r --delete-unmatched-destination)
           if [[ "$DRY_RUN" == "true" ]]; then
             flags+=(--dry-run)
