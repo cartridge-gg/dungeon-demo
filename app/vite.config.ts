@@ -13,6 +13,7 @@ const useHttps = process.env.HTTP !== "1";
 
 // Port 3002 — distinct from cross-chain-game (3001) so both demos can run.
 export default defineConfig({
+  base: process.env.VITE_BASE_PATH || "./",
   // wasm + topLevelAwait are needed by @dojoengine/torii-wasm (the Torii client
   // used for live entity/event subscriptions): its web build imports the `.wasm`
   // as an ES module and self-initializes at top level.
