@@ -1,0 +1,71 @@
+name: Deploy static frontend
+
+on:
+  workflow_dispatch:
+    inputs:
+      bucket:
+        description: GCS bucket name
+        required: true
+        default: c7e-prod-static
+      prefix:
+        description: Bucket prefix to deploy under
+        required: true
+        default: dungeon-demo
+      dry_run:
+        description: Print rsync changes without writing
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: app
+        run: bun install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: app
+        env:
+          VITE_BASE_PATH: ./
+        run: bun run build
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy to GCS
+        env:
+          BUCKET: ${{ inputs.bucket }}
+          PREFIX: ${{ inputs.prefix }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          dst="gs://${BUCKET}/${PREFIX%/}"
+          flags=(-r --delete-unmatched-destination)
+          if [[ "$DRY_RUN" == "true" ]]; then
+            flags+=(--dry-run)
+          fi
+          gcloud storage rsync "${flags[@]}" app/dist "$dst"
+          if [[ "$DRY_RUN" != "true" ]]; then
+            gcloud storage objects update "$dst/index.html" --cache-control="no-cache, max-age=0"
+            gcloud storage objects update "$dst/assets/**" --cache-control="public, max-age=31536000, immutable" || true
+          fi
