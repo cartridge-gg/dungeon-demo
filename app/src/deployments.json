@@ -4,29 +4,29 @@
     "chainId": "SN_SEPOLIA",
     "rpcUrl": "https://api.cartridge.gg/x/starknet/sepolia/rpc/v0_9",
     "explorer": "https://sepolia.voyager.online",
-    "torii": "http://localhost:8091",
+    "torii": "https://dungeon-backend.cartridge.gg/torii/score",
     "account": {
       "address": "0x0",
       "privateKey": "0x0"
     },
-    "piltover": "0x0",
-    "usdc": "0x0",
-    "gameToken": "0x0",
-    "goldToken": "0x0",
-    "bankWorld": "0x0",
-    "bankSystem": "0x0",
-    "tokenSale": "0x0",
-    "entry": "0x0"
+    "piltover": "0x576e8e68a4d7062b20566fbd9183dcf5a64282cf2afea6621bb2b5d2e0a4cae",
+    "usdc": "0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343",
+    "gameToken": "0x428c15031cabf2a197bc651dee8d30e5c2cb9a4301c54ee73a61f26f393a742",
+    "goldToken": "0xbc91dfdbc66b034080fb54b205a356bb93e7825303310208ae88c9a75ba4",
+    "bankWorld": "0x3ebc7374d32b186d2311a9c92ea3047aec4ca93fe8881ada4c84c910b116589",
+    "bankSystem": "0x5ea344e7cfa859051137e74db83aa2707e315075407563cbd52888f94d02dbe",
+    "tokenSale": "0x1920215763f0727e1ce3e76b7fd7a7224a8d8d80719ca6869bb5c645b908287",
+    "entry": "0x543f50430638e99a5ee098d3935803b6fc3c4586739c5d8410fdd509cdd5a46"
   },
   "appchain": {
-    "rpcUrl": "http://localhost:5070",
-    "explorer": "http://localhost:5070/explorer",
-    "torii": "http://localhost:8092",
+    "rpcUrl": "https://dungeon-backend.cartridge.gg/rpc",
+    "explorer": "https://dungeon-backend.cartridge.gg/rpc/explorer",
+    "torii": "https://dungeon-backend.cartridge.gg/torii/game",
     "account": {
       "address": "0x0",
       "privateKey": "0x0"
     },
-    "gameWorld": "0x0",
-    "gameSystem": "0x0"
+    "gameWorld": "0x7f6c1c800301783a1a5a9378a6c3cdf237ad9ae21bb715c0bf5e408a450ab6e",
+    "gameSystem": "0x6d3d2eab82c4b17ee17eeae58f9981db04a8e9beeaa887b355ce7e57f085e97"
   }
 }
