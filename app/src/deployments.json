@@ -19,8 +19,8 @@
     "entry": "0x0"
   },
   "appchain": {
-    "rpcUrl": "http://localhost:5070",
-    "explorer": "http://localhost:5070/explorer",
+    "rpcUrl": "https://dungeon-backend.cartridge.gg/rpc",
+    "explorer": "https://dungeon-backend.cartridge.gg/rpc/explorer",
     "torii": "http://localhost:8092",
     "account": {
       "address": "0x0",
