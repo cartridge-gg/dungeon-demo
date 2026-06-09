@@ -11,7 +11,7 @@ import { logStreamPlugin } from "./vite-plugin-logs.ts";
 // installs the CA — a one-time OS prompt). Set HTTP=1 to serve plain http instead.
 const useHttps = process.env.HTTP !== "1";
 
-// Port 3002 — distinct from cross-chain-game (3001) so both demos can run.
+// Frontend dev server on port 3002.
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || "./",
   // wasm + topLevelAwait are needed by @dojoengine/torii-wasm (the Torii client
