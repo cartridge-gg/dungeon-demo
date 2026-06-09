@@ -98,13 +98,13 @@ progress, and the exact L2→L1 message: route (`game system → bank system`), 
 and `bank` consumes. `withdrawalMessageHash` in `chain.ts` mirrors the cairo
 `compute_message_hash_appc_to_sn` (poseidon over `[from, to, payload_len, ...payload]`).
 
-## Wallets (operator default, optional Controller)
+## Wallets (Controller only)
 
-By default the client signs with the **operator account** (a real funded Sepolia
-account from `deployments.json`) on Sepolia and the **dev account** on the appchain —
-no login needed. The header **login** button can swap in a
-[Cartridge Controller](https://github.com/cartridge-gg/controller) that signs on
-**both chains** as one identity.
+Nothing signs by default — the **login** button prompts a
+[Cartridge Controller](https://github.com/cartridge-gg/controller) connect directly
+(no wallet picker; the Controller is the only login), which signs on **both chains**
+as one identity. The committed `deployments.json` carries **no account keys** —
+`up.sh` writes the dev accounts in on a local boot.
 
 `wallet.tsx` builds a two-chain Controller: `ControllerConnector` gets both RPCs and
 `StarknetConfig` both chains. It exposes two signers — `l1Account` (buy / enter /
@@ -123,8 +123,9 @@ runs it entered. The play actions take an optional `account` in `chain.ts`
 (`moveRoom(runNo, account?)` …); with the Controller it's `l2Account`, otherwise the
 dev account keeps its pre-confirmed nonce/estimate fast path.
 
-The appchain leg needs `CONTROLLER=1 ./up.sh` (paymaster + Controller classes on the
-appchain) and a Cartridge Controller login — the **hosted keychain** (x.cartridge.gg) by
+The appchain leg is Controller-capable out of the box (`./up.sh` always enables the
+paymaster + Controller classes on the appchain) and needs only a Cartridge Controller
+login — the **hosted keychain** (x.cartridge.gg) by
 default, or a self-hosted keychain as a fully-local fallback. Full setup, including
 funding the Controller on real Sepolia, is in [controller.md](./controller.md).
 

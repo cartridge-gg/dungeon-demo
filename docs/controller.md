@@ -2,9 +2,9 @@
 
 [← client](./client.md) · [guide index](./README.md)
 
-The demo runs on the **operator account** by default (no login). Optionally a single
-**Cartridge Controller** can sign everything — buy / enter / bank on **real Sepolia**
-*and* the dungeon play actions on the **local appchain** — at one address.
+The demo signs with a single **Cartridge Controller** — buy / enter / bank on **real
+Sepolia** *and* the dungeon play actions on the **local appchain** — at one address.
+It's the only login: the Login button prompts the Controller connect directly.
 
 ## How it works
 
@@ -14,7 +14,7 @@ signers — `l1Account` (Sepolia) and `l2Account` (appchain). Each wraps the raw
 switches to `shortString("DUNGEON")`, executes the play action, then switches back to
 Sepolia for the next L1 op. The **player** is the Controller address (same on both
 chains), so a run entered on Sepolia is played and banked by that same Controller.
-Details in [client.md](./client.md#wallets-operator-default-optional-controller).
+Details in [client.md](./client.md#wallets-controller-only).
 
 ## Setup (hosted keychain)
 
@@ -22,10 +22,10 @@ By default the app connects to the **hosted Cartridge keychain** (`x.cartridge.g
 your **real Cartridge Controller account**, already deployed by Cartridge. Just:
 
 ```bash
-CONTROLLER=1 ./up.sh
+./up.sh
 ```
 
-`CONTROLLER=1` appends `--paymaster --cartridge.paymaster --cartridge.controllers` to
+`up.sh` always appends `--paymaster --cartridge.paymaster --cartridge.controllers` to
 the **appchain** node (the settlement side is real Sepolia — Cartridge knows it
 natively, so only the appchain needs the middleware) and **declares the Controller
 account classes on the appchain** (`scripts/declare-controller-class.ts`, *all* bundled
@@ -62,12 +62,15 @@ hit **Dev-mint** (a session policy) once funded, or buy with USDC.
   in `app/.env.local` so the keychain sits on the appchain, Connect → it shows an
   **Upgrade** screen → upgrade → unset the var. (The upgrade gate reads the *current*
   chain, so on Sepolia — already upgraded — it never offers the appchain upgrade.)
+  **Unsetting it matters**: while set, the keychain pins to `http://localhost:5070`,
+  which a hidden iframe can't reach under Chrome's Local Network Access rules — the
+  silent session probe then finds nothing and auto-reconnect on page load stops working.
 - **Per-chain sessions** — the appchain session isn't pre-approved on connect, so the
   first play may show a confirm modal rather than being silent.
-- **HTTPS for WebAuthn** — `CONTROLLER=1 ./up.sh` serves `https://localhost:3002` via
+- **HTTPS for WebAuthn** — `./up.sh` serves `https://localhost:3002` via
   `mkcert`; passkey login refuses an untrusted cert.
 
-The default operator path needs none of this — `./up.sh` and play.
+A Controller login is required to play — there is no other wallet option.
 
 ## Self-hosted keychain (fully-local fallback)
 
@@ -80,7 +83,7 @@ offline dev) — point the app at a self-hosted keychain instead:
 2. Point the app at it, then start:
    ```bash
    echo 'VITE_KEYCHAIN_URL=https://localhost:3010' > app/.env.local
-   CONTROLLER=1 ./up.sh
+   ./up.sh
    ```
 
 A self-hosted Controller is a **fresh localhost passkey** (RP-id `localhost`), so its

@@ -315,9 +315,9 @@ function OutcomeModal({ outcome, onClose }: { outcome: chain.OutcomeRow; onClose
   );
 }
 
-/** Account modal: shows the currently connected account, and a picker to switch the
- *  signing method — operator account ↔ Cartridge Controller. Opened from the account
- *  chip in the header. */
+/** Account modal: the connected Controller (username + address) and disconnect. There
+ *  is no picker — the Controller is the only login, prompted directly by the Login
+ *  button / account chip when disconnected. */
 function WalletModal({ onClose }: { onClose: () => void }) {
   const wallet = useWallet();
   useEffect(() => {
@@ -326,95 +326,34 @@ function WalletModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const [showMore, setShowMore] = useState(false);
-  const connected = wallet.method !== null; // a signer is active
-  const isCtrl = wallet.method === "controller";
-  const signerName =
-    wallet.method === "controller"
-      ? "Cartridge Controller"
-      : wallet.method === "injected"
-        ? wallet.label || "Wallet"
-        : "Operator account";
-  const pick = (fn: () => Promise<void>) => () => void fn().then(onClose).catch(() => {});
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">
-          <span>{connected ? "account" : "connect a wallet"}</span>
+          <span>account</span>
           <button className="modal-x" onClick={onClose} aria-label="close">
             ✕
           </button>
         </div>
-        {connected ? (
-          // Connected: just the current account + disconnect — no other-wallet options.
-          <>
-            <dl className="kv">
-              <div className="kv-row">
-                <dt>signing as</dt>
-                <dd>{signerName}</dd>
-              </div>
-              {isCtrl && wallet.username ? (
-                <div className="kv-row">
-                  <dt>username</dt>
-                  <dd>{wallet.username}</dd>
-                </div>
-              ) : null}
-              <div className="kv-row">
-                <dt>address</dt>
-                <dd className="mono-wrap">{wallet.player || "—"}</dd>
-              </div>
-            </dl>
-            <button className="wallet-disconnect" onClick={pick(wallet.disconnect)}>
-              disconnect
-            </button>
-          </>
-        ) : (
-          // Disconnected: Cartridge Controller is the primary choice; the rest live under "more".
-          <div className="wallet-methods">
-            <button
-              className="wallet-opt primary"
-              disabled={!wallet.controllerAvailable || wallet.connecting}
-              onClick={pick(wallet.connectController)}
-            >
-              <span className="wo-title">{wallet.connecting ? "Connecting…" : "Cartridge Controller"}</span>
-              <span className="wo-sub">
-                {wallet.controllerAvailable ? "passkey wallet · signs both chains" : "unavailable — start the stack first"}
-              </span>
-            </button>
-            <button className="wallet-more" onClick={() => setShowMore((v) => !v)} aria-expanded={showMore}>
-              {showMore ? "less" : "more"}
-            </button>
-            <div className={`wallet-extra ${showMore ? "open" : ""}`}>
-              <div className="wallet-extra-inner">
-                <button className="wallet-opt" tabIndex={showMore ? 0 : -1} onClick={pick(wallet.useOperator)}>
-                  <span className="wo-title">Operator account</span>
-                  <span className="wo-sub">
-                    prefunded Sepolia dev key · <span className="mono">{chain.shortHex(chain.operatorAccount.address)}</span>
-                  </span>
-                </button>
-                <button
-                  className="wallet-opt"
-                  tabIndex={showMore ? 0 : -1}
-                  disabled={wallet.connecting}
-                  onClick={pick(() => wallet.connectInjected("argent"))}
-                >
-                  <span className="wo-title">Argent X</span>
-                  <span className="wo-sub">browser wallet · Sepolia (dev key plays)</span>
-                </button>
-                <button
-                  className="wallet-opt"
-                  tabIndex={showMore ? 0 : -1}
-                  disabled={wallet.connecting}
-                  onClick={pick(() => wallet.connectInjected("braavos"))}
-                >
-                  <span className="wo-title">Braavos</span>
-                  <span className="wo-sub">browser wallet · Sepolia (dev key plays)</span>
-                </button>
-              </div>
-            </div>
+        <dl className="kv">
+          <div className="kv-row">
+            <dt>signing as</dt>
+            <dd>Cartridge Controller</dd>
           </div>
-        )}
+          {wallet.username ? (
+            <div className="kv-row">
+              <dt>username</dt>
+              <dd>{wallet.username}</dd>
+            </div>
+          ) : null}
+          <div className="kv-row">
+            <dt>address</dt>
+            <dd className="mono-wrap">{wallet.player || "—"}</dd>
+          </div>
+        </dl>
+        <button className="wallet-disconnect" onClick={() => void wallet.disconnect().then(onClose)}>
+          disconnect
+        </button>
       </div>
     </div>
   );
@@ -777,9 +716,17 @@ function ConfigPanel() {
       <Field label="game world" value={chain.GAME_WORLD} />
       <Field label="game system" value={chain.GAME_SYSTEM} />
 
-      <div className="cfg-sec">Accounts</div>
-      <Field label="settlement (operator)" value={chain.operatorAccount.address} href={l1(chain.operatorAccount.address)} />
-      <Field label="appchain (dev)" value={chain.appchainAccount.address} />
+      {/* Dev accounts exist only on a local up.sh boot (the committed deployments.json
+          carries no account keys). */}
+      {(chain.operatorAccount || chain.appchainAccount) && (
+        <>
+          <div className="cfg-sec">Accounts</div>
+          {chain.operatorAccount && (
+            <Field label="settlement (operator)" value={chain.operatorAccount.address} href={l1(chain.operatorAccount.address)} />
+          )}
+          {chain.appchainAccount && <Field label="appchain (dev)" value={chain.appchainAccount.address} />}
+        </>
+      )}
     </div>
   );
 }
@@ -1047,11 +994,11 @@ export default function App() {
       setBusy(null);
     }
   };
-  // Like act, but needs a connected signer — opens the wallet modal to connect otherwise.
+  // Like act, but needs a connected signer — prompts the Controller login otherwise.
   const actL1 = (name: string, fn: (acc: chain.Signer) => Promise<unknown>) =>
-    act("l1", name, () => (wallet.l1Account ? fn(wallet.l1Account) : (setWalletOpen(true), Promise.resolve())));
+    act("l1", name, () => (wallet.l1Account ? fn(wallet.l1Account) : (void wallet.connectController(), Promise.resolve())));
   const actL2 = (name: string, fn: (acc: chain.Signer) => Promise<unknown>) =>
-    act("l2", name, () => (wallet.l2Account ? fn(wallet.l2Account) : (setWalletOpen(true), Promise.resolve())));
+    act("l2", name, () => (wallet.l2Account ? fn(wallet.l2Account) : (void wallet.connectController(), Promise.resolve())));
 
   const playing = selectedRun != null;
   const inCombat = !!run && run.enemyHp > 0;
@@ -1156,7 +1103,7 @@ export default function App() {
   // the lobby stays stuck behind the loader with no way to retry.
   const onNewGame = async () => {
     if (!wallet.l1Account) {
-      setWalletOpen(true);
+      void wallet.connectController(); // no picker — the Controller IS the login
       return;
     }
     enteringRef.current = stats ? stats.totalRuns : 0;
@@ -1257,8 +1204,10 @@ export default function App() {
             <div className="chips">
               <button
                 className={`chip ${wallet.method !== null ? "on" : ""} acct-chip`}
-                onClick={() => setWalletOpen(true)}
-                title={wallet.method === null ? "connect a wallet" : "account details"}
+                // Disconnected → prompt the Controller login directly (no picker);
+                // connected → the account modal (username / address / disconnect).
+                onClick={() => (wallet.method === null ? void wallet.connectController() : setWalletOpen(true))}
+                title={wallet.method === null ? "log in with Cartridge Controller" : "account details"}
               >
                 <span
                   className="led"
@@ -1468,15 +1417,15 @@ export default function App() {
                   </div>
                   <button
                     className="good newgame-start"
-                    disabled={l1Busy || !actReady}
+                    disabled={l1Busy || !actReady || wallet.connecting}
                     onClick={() => {
-                      // disconnected → onNewGame just opens the connect modal; save the
+                      // disconnected → onNewGame prompts the Controller login; save the
                       // enter-the-dungeon sfx for an actual entry
                       if (wallet.method !== null) sfx("teleport");
                       void onNewGame();
                     }}
                   >
-                    {wallet.method === null ? "Login" : "+ New Game"}
+                    {wallet.connecting ? "Connecting…" : wallet.method === null ? "Login" : "+ New Game"}
                   </button>
                   {runs.length > 0 && (
                     <div className="lobby-list">
@@ -1765,7 +1714,7 @@ export default function App() {
         </FloatingWindow>
       )}
       {selected && <OutcomeModal outcome={selected} onClose={() => setSelected(null)} />}
-      {walletOpen && <WalletModal onClose={() => setWalletOpen(false)} />}
+      {walletOpen && wallet.method !== null && <WalletModal onClose={() => setWalletOpen(false)} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {errOpen && err && <ErrorModal message={err} onClose={() => setErrOpen(false)} />}
       {wdDetail && (
