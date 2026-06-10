@@ -33,7 +33,6 @@ jobs:
       SSH_USER: ${{ secrets.TEE_SSH_USER }}
       DEPLOY_DIR: ${{ inputs.deploy_dir }}
       PREPARE_ONLY: ${{ inputs.prepare_only && '1' || '0' }}
-      REPO_URL: https://github.com/${{ github.repository }}.git
       REPO_REF: ${{ github.ref_name }}
     steps:
       - name: Checkout (for committing the manifest)
@@ -58,15 +57,13 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
-      - name: Fresh-clone the repo on the server
+      - name: Sync the repo to the server
         run: |
-          ssh target "DEPLOY_DIR='$DEPLOY_DIR' REPO_URL='$REPO_URL' REPO_REF='$REPO_REF' bash -seu" <<'EOSSH'
-          dir="$HOME/$DEPLOY_DIR"
-          echo "→ fresh clone $REPO_URL@$REPO_REF → $dir"
-          rm -rf "$dir"
-          mkdir -p "$(dirname "$dir")"
-          git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$dir"
-          EOSSH
+          # Push the runner's authenticated checkout (this works for a private repo)
+          # to the server, so the server needs no GitHub credentials. Fresh dir each
+          # run; .git is excluded (the deploy reads GIT_REF/GIT_SHA from the env).
+          ssh target "rm -rf \"\$HOME/$DEPLOY_DIR\" && mkdir -p \"\$HOME/$DEPLOY_DIR\""
+          rsync -az --exclude '.git' -e ssh ./ "target:$DEPLOY_DIR/"
 
       - name: Install .env on the server
         env:
