@@ -9,7 +9,7 @@
 #
 # Prereqs: the bootstrap (piltover + rollup genesis) and deploy must already have run —
 # i.e. `up.sh` at least once. The scripts read what they need from .env,
-# .run/chain-config, .run/tee_registry, and app/src/deployments.json.
+# .run/chain-config, .run/tee_registry, and deployments.json.
 set -euo pipefail
 
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "$DEMO_DIR/../.." && pwd)"
 RUN_DIR="$DEMO_DIR/.run"
 CHAIN_DIR="$RUN_DIR/chain-config"
 APPCHAIN_DB="$RUN_DIR/appchain-db"   # persistent appchain state — survives restarts
-DEPLOYMENTS="$DEMO_DIR/app/src/deployments.json"
+DEPLOYMENTS="$DEMO_DIR/deployments.json"
 
 # Ports — keep in sync with up.sh.
 APPCHAIN_PORT=5070

@@ -36,8 +36,8 @@ This is *not* fully one-click — settling to a real chain needs real accounts.
 2. **Patched saya v0.4.0** (`saya-ops`, `saya-tee`) on PATH — a build with the
    Poseidon L1→L2 message-hash fix.
 3. **Dojo toolchain** (`sozo`/`torii`/`scarb`) via `asdf install` (pinned in
-   `.tool-versions`), and a sibling **dojo** checkout (the cairo packages depend on
-   it by path, ref `sozo/v1.8.7`).
+   `.tool-versions`). The cairo worlds pull **Dojo from the Scarb registry**
+   (`dojo = "1.8.0"`), so no separate dojo checkout is needed.
 4. **Bun**.
 5. A funded Sepolia **operator** account and a separate funded **saya** account,
    and a **USDC** address — all in `.env` (see below).
@@ -101,7 +101,7 @@ walkthrough: [docs/controller.md](./docs/controller.md).
 From a fresh deploy (`FRESH=1 ./up.sh`) on **2026-06-08**. Settlement is real
 **Starknet Sepolia**; the appchain is the local `DUNGEON` rollup. The Sepolia contracts
 (piltover, tokens, worlds) are **redeployed on every `FRESH=1`** — the always-current source
-is `app/src/deployments.json`. The appchain world/system and the TEE-registry mock are
+is `deployments.json` (repo root). The appchain world/system and the TEE-registry mock are
 derived from fixed seeds/salts, so they're stable across redeploys.
 
 ### Settlement — Starknet Sepolia ([Voyager](https://sepolia.voyager.online))

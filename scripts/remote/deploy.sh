@@ -5,19 +5,18 @@
 # Runs ON the remote TEE server (see .github/workflows/deploy-sepolia.yml, which
 # fresh-clones the repo and invokes this). Two phases:
 #
-#   prepare   make the checkout build standalone — clone dojo at $DOJO_REF, point
-#             the cairo path-deps at it, resolve the Controller class artifacts,
-#             install JS deps. Idempotent; touches nothing that's running.
+#   prepare   make the checkout build standalone — resolve the Controller class
+#             artifacts, install JS deps, and build the cairo packages (Dojo comes
+#             from the Scarb registry, so no checkout to wire up). Idempotent;
+#             touches nothing that's running.
 #   bring-up  tear down any running stack, FRESH-bootstrap piltover + the rollup,
 #             deploy the economy + worlds (real Sepolia gas), and start the
 #             services under tmux. DESTRUCTIVE — kills the live demo.
 #
-# PREPARE_ONLY=1 stops after `prepare` (clone + cairo build), spending no gas and
-# leaving any running stack alone — use it to validate the standalone build.
+# PREPARE_ONLY=1 stops after `prepare` (cairo build), spending no gas and leaving
+# any running stack alone — use it to validate the standalone build.
 #
 # Env knobs (all optional):
-#   DOJO_REF              dojo git ref for the cairo path-deps (default sozo/v1.8.7)
-#   DOJO_DIR              where to clone dojo  (default: sibling of the checkout)
 #   CONTROLLER_CLASSES_DIR  Controller artifact dir (default: $HOME/katana/...)
 #   TMUX_SESSION          tmux session name for the services (default: dungeon)
 #   PREPARE_ONLY          1 = stop after the standalone build
@@ -28,8 +27,6 @@ DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICES="$DEMO_DIR/scripts/services"
 RUN_DIR="$DEMO_DIR/.run"
 
-DOJO_REF="${DOJO_REF:-sozo/v1.8.7}"
-DOJO_DIR="${DOJO_DIR:-$(cd "$DEMO_DIR/.." && pwd)/dojo}"
 TMUX_SESSION="${TMUX_SESSION:-dungeon}"
 TEE_REGISTRY_SALT="0x7ee"
 
@@ -41,37 +38,12 @@ fail() { echo "error: $*" >&2; exit 1; }
 
 # ── prepare: make this checkout build on its own ────────────────────────────────
 prepare() {
-  command -v git    >/dev/null || fail "git not found on PATH."
   command -v scarb  >/dev/null || fail "scarb not found on PATH (need 2.13.1)."
   command -v sozo   >/dev/null || fail "sozo not found on PATH (need 1.8.7)."
   command -v bun    >/dev/null || fail "bun not found on PATH."
   command -v katana >/dev/null || fail "katana not found on PATH."
 
-  # 1. dojo checkout at the pinned ref — the cairo packages depend on it by path.
-  if [[ -d "$DOJO_DIR/.git" ]]; then
-    say "updating dojo checkout at $DOJO_DIR ($DOJO_REF)…"
-    git -C "$DOJO_DIR" fetch --depth 1 origin "$DOJO_REF"
-    git -C "$DOJO_DIR" checkout -q FETCH_HEAD
-  else
-    say "cloning dojo @ $DOJO_REF → $DOJO_DIR…"
-    rm -rf "$DOJO_DIR"
-    git clone --depth 1 --branch "$DOJO_REF" https://github.com/dojoengine/dojo.git "$DOJO_DIR"
-  fi
-  [[ -d "$DOJO_DIR/crates/dojo/core" ]] || fail "dojo core not found at $DOJO_DIR/crates/dojo/core."
-
-  # 2. Repoint the cairo path-deps (committed paths assume the monorepo layout) at
-  #    the dojo checkout above. We edit the fresh clone only — never committed back.
-  say "pointing cairo path-deps at $DOJO_DIR…"
-  for pkg in game score; do
-    sed -i \
-      -e "s#path = \"../../../../../dojo/crates/dojo/core\"#path = \"$DOJO_DIR/crates/dojo/core\"#" \
-      -e "s#path = \"../../../../../dojo/crates/dojo/macros\"#path = \"$DOJO_DIR/crates/dojo/macros\"#" \
-      "$DEMO_DIR/cairo/$pkg/Scarb.toml"
-    grep -q "$DOJO_DIR/crates/dojo/core" "$DEMO_DIR/cairo/$pkg/Scarb.toml" \
-      || fail "failed to rewrite dojo path-dep in cairo/$pkg/Scarb.toml."
-  done
-
-  # 3. Controller class artifacts (ship with katana). No monorepo parent here, so
+  # 1. Controller class artifacts (ship with katana). No monorepo parent here, so
   #    point declare-controller-class.ts at an existing katana checkout. Override
   #    with CONTROLLER_CLASSES_DIR; default to the server's katana checkout.
   local default_classes="$HOME/katana/crates/contracts/contracts/controller/account_sdk/artifacts/classes"
@@ -81,13 +53,14 @@ prepare() {
   export CONTROLLER_CLASSES_DIR
   say "controller classes: $CONTROLLER_CLASSES_DIR"
 
-  # 4. JS deps (deploy scripts + frontend).
+  # 2. JS deps (deploy scripts + frontend).
   say "installing JS deps…"
   ( cd "$DEMO_DIR" && bun install >/dev/null )
   ( cd "$DEMO_DIR/app" && bun install >/dev/null )
 
-  # 5. Build the cairo packages now so a broken standalone build fails here, before
-  #    we spend any gas or touch the running stack.
+  # 3. Build the cairo packages now so a broken standalone build fails here, before
+  #    we spend any gas or touch the running stack. Dojo resolves from the Scarb
+  #    registry (see cairo/{game,score}/Scarb.toml) — nothing to clone.
   say "building cairo packages (standalone build check)…"
   ( cd "$DEMO_DIR/cairo/token" && scarb build )
   ( cd "$DEMO_DIR/cairo/game"  && scarb build )
@@ -170,7 +143,7 @@ bootstrap() {
   ' "$CHAIN_DIR/genesis.json" "$SETTLEMENT_RPC_URL" "$OPERATOR_ADDRESS" "$OPERATOR_PRIVATE_KEY" \
     "$PILTOVER" "$USDC_ADDRESS" "$APPCHAIN_PORT" "$TORII_SCORE_HTTP" "$TORII_GAME_HTTP" \
     "$SETTLEMENT_EXPLORER" "$SETTLEMENT_NETWORK" "$SETTLEMENT_CHAIN_ID" \
-    "$DEMO_DIR/app/src/deployments.json"
+    "$DEMO_DIR/deployments.json"
 }
 
 # Launch a service script in its own tmux window (creating the session on first call).
@@ -187,13 +160,13 @@ svc_window() {
 wait_http() { until curl -s -o /dev/null "$1" 2>/dev/null; do sleep 0.5; done; }
 
 # ── write a sanitized deployment manifest (NO private keys) for the workflow to
-#    commit. Projects app/src/deployments.json + the TEE registry + run metadata
+#    commit. Projects deployments.json + the TEE registry + run metadata
 #    down to addresses / URLs / account addresses only. ─────────────────────────
 manifest() {
   local out_dir="$DEMO_DIR/deployments"
   mkdir -p "$out_dir"
   say "writing deployment manifest → deployments/<network>.json…"
-  DEPLOYMENTS_FILE="$DEMO_DIR/app/src/deployments.json" \
+  DEPLOYMENTS_FILE="$DEMO_DIR/deployments.json" \
   TEE_REGISTRY="$(cat "$RUN_DIR/tee_registry" 2>/dev/null || true)" \
   GIT_REF="${GIT_REF:-$(git -C "$DEMO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)}" \
   GIT_SHA="${GIT_SHA:-$(git -C "$DEMO_DIR" rev-parse HEAD 2>/dev/null || true)}" \

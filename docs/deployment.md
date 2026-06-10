@@ -3,7 +3,7 @@
 [← contracts](./contracts.md) · Next: [client →](./client.md)
 
 From source to a running system. The toolchain is `scarb 2.13.1` / `sozo 1.8.7` /
-`torii 1.8.16`, with Dojo consumed by path from a sibling checkout (standard `sozo
+`torii 1.8.16`, with Dojo pulled from the Scarb registry (`dojo = "1.8.0"`, standard `sozo
 migrate` mechanics). What's new here: **plain-contract deploys alongside the Dojo migrations**,
 **minter grants**, and a **real-Sepolia bootstrap** that needs funded accounts.
 
@@ -30,7 +30,7 @@ have 18 decimals, USDC 6) so the rate carries the decimal conversion.
 ## Two kinds of deploy
 
 `scripts/deploy.ts` does both, in dependency order, recording everything into
-`app/src/deployments.json`:
+`deployments.json` (repo root):
 
 - **Dojo worlds** via `sozo migrate` (`migrateWorld` in `scripts/lib.ts`) — the
   `score` world on Sepolia, the `game` world on the appchain.
@@ -57,8 +57,8 @@ game world before `entry` (which addresses it); the grants last.
 
 `up.sh` orchestrates it. The settlement steps run against **real Sepolia**:
 
-1. **Preflight** — `asdf install`, verify katana / patched saya / sozo·torii·scarb /
-   the sibling dojo checkout, and that `.env` is filled.
+1. **Preflight** — `asdf install`, verify katana / patched saya / sozo·torii·scarb,
+   and that `.env` is filled.
 2. **Mock TEE registry on Sepolia** (`saya-ops`, operator account).
 3. **piltover core + rollup config** via `katana init rollup --tee` against Sepolia
    (saya account = piltover operator).
@@ -93,7 +93,7 @@ cp .env.example .env && ./up.sh     # Ctrl-C / ./down.sh tears down the local pr
 ## Verify each stage
 
 ```bash
-node -e 'console.log(require("./app/src/deployments.json"))'   # all addresses filled?
+node -e 'console.log(require("./deployments.json"))'   # all addresses filled?
 # score world indexed on Sepolia?
 curl "http://localhost:8091/sql?query=SELECT%20*%20FROM%20%22score-Leaderboard%22"
 # settled vs tip (the UI gauge): piltover get_state vs appchain block height

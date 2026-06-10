@@ -17,7 +17,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const DEMO_ROOT = resolve(__dirname, "..");
 export const CAIRO_DIR = resolve(DEMO_ROOT, "cairo");
-export const DEPLOYMENTS_PATH = resolve(DEMO_ROOT, "app/src/deployments.json");
+export const DEPLOYMENTS_PATH = resolve(DEMO_ROOT, "deployments.json");
 
 export type Keypair = { address: string; privateKey: string };
 
