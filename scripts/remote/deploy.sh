@@ -186,6 +186,45 @@ svc_window() {
 
 wait_http() { until curl -s -o /dev/null "$1" 2>/dev/null; do sleep 0.5; done; }
 
+# ── write a sanitized deployment manifest (NO private keys) for the workflow to
+#    commit. Projects app/src/deployments.json + the TEE registry + run metadata
+#    down to addresses / URLs / account addresses only. ─────────────────────────
+manifest() {
+  local out_dir="$DEMO_DIR/deployments"
+  mkdir -p "$out_dir"
+  say "writing deployment manifest → deployments/<network>.json…"
+  DEPLOYMENTS_FILE="$DEMO_DIR/app/src/deployments.json" \
+  TEE_REGISTRY="$(cat "$RUN_DIR/tee_registry" 2>/dev/null || true)" \
+  GIT_REF="${GIT_REF:-$(git -C "$DEMO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)}" \
+  GIT_SHA="${GIT_SHA:-$(git -C "$DEMO_DIR" rev-parse HEAD 2>/dev/null || true)}" \
+  DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  OUT_DIR="$out_dir" \
+  node -e '
+    const fs = require("node:fs");
+    const e = process.env;
+    const d = require(e.DEPLOYMENTS_FILE);
+    const s = d.settlement, a = d.appchain;
+    const manifest = {
+      meta: { network: s.network, deployedAt: e.DEPLOYED_AT, gitRef: e.GIT_REF || null, gitSha: e.GIT_SHA || null },
+      settlement: {
+        network: s.network, chainId: s.chainId, rpcUrl: s.rpcUrl, explorer: s.explorer, torii: s.torii,
+        piltover: s.piltover, teeRegistry: e.TEE_REGISTRY || null, usdc: s.usdc,
+        gameToken: s.gameToken, goldToken: s.goldToken,
+        bankWorld: s.bankWorld, bankSystem: s.bankSystem,
+        tokenSale: s.tokenSale, entry: s.entry,
+        operator: s.account?.address ?? null,        // address only — never the key
+      },
+      appchain: {
+        rpcUrl: a.rpcUrl, explorer: a.explorer, torii: a.torii,
+        gameWorld: a.gameWorld, gameSystem: a.gameSystem,
+        devAccount: a.account?.address ?? null,       // address only — never the key
+      },
+    };
+    fs.writeFileSync(`${e.OUT_DIR}/${s.network}.json`, JSON.stringify(manifest, null, 2) + "\n");
+    console.log(`  ${s.network}.json`);
+  '
+}
+
 # ── bring the services up + deploy the economy/worlds in dependency order ────────
 bringup() {
   say "starting appchain node on :$APPCHAIN_PORT…"
@@ -225,6 +264,7 @@ main() {
   teardown
   bootstrap
   bringup
+  manifest
 
   echo ""
   say "✓ fresh deploy complete — services under tmux session '$TMUX_SESSION':"
@@ -234,8 +274,8 @@ main() {
   echo "    torii (game)  : http://localhost:$TORII_GAME_HTTP/sql"
   echo "    frontend      : https://localhost:$FRONTEND_PORT"
   echo ""
-  say "deployed addresses (app/src/deployments.json):"
-  cat "$DEMO_DIR/app/src/deployments.json"
+  say "deployment manifest (sanitized — committed by the workflow):"
+  cat "$DEMO_DIR/deployments/$SETTLEMENT_NETWORK.json"
 }
 
 main "$@"

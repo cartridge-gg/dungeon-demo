@@ -23,8 +23,9 @@ concurrency:
   group: deploy-sepolia
   cancel-in-progress: false
 
+# contents: write so the deploy can commit the sanitized manifest back.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -40,6 +41,11 @@ jobs:
       REPO_URL: https://github.com/${{ github.repository }}.git
       REPO_REF: ${{ github.ref_name }}
     steps:
+      - name: Checkout (for committing the manifest)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.TEE_SSH_KEY }}
@@ -77,9 +83,20 @@ jobs:
 
       - name: Run the fresh deploy
         run: |
-          ssh target "cd \"\$HOME/$DEPLOY_DIR\" && DOJO_REF='$DOJO_REF' PREPARE_ONLY='$PREPARE_ONLY' bash scripts/remote/deploy.sh"
+          ssh target "cd \"\$HOME/$DEPLOY_DIR\" && DOJO_REF='$DOJO_REF' GIT_REF='$REPO_REF' GIT_SHA='${{ github.sha }}' PREPARE_ONLY='$PREPARE_ONLY' bash scripts/remote/deploy.sh"
 
-      - name: Show deployed addresses
+      - name: Commit the deployment manifest
         if: ${{ inputs.prepare_only == false }}
         run: |
-          ssh target "cat '$DEPLOY_DIR/app/src/deployments.json'"
+          # Pull the sanitized manifest dir off the server (no private keys — see
+          # the manifest() step in scripts/remote/deploy.sh) into this checkout.
+          ssh target "cd \"\$HOME/$DEPLOY_DIR\" && tar cf - deployments" | tar xf -
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deployments
+          if git diff --cached --quiet; then
+            echo "→ manifest unchanged — nothing to commit."
+          else
+            git commit -m "chore: record deployment manifest [skip ci]"
+            git push origin "HEAD:$REPO_REF"
+          fi
