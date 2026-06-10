@@ -1,0 +1,102 @@
+name: Deploy fresh stack to Sepolia (TEE server)
+
+# Manual only — a fresh deploy redeploys every Sepolia contract (real gas) and
+# restarts the live stack on the TEE server. There is no automatic trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      prepare_only:
+        description: "Clone + build only — no teardown, no gas, no service restart"
+        type: boolean
+        default: false
+      dojo_ref:
+        description: "dojo git ref for the cairo path-deps"
+        type: string
+        default: "sozo/v1.8.7"
+      deploy_dir:
+        description: "Clone path on the server, relative to the SSH user's home"
+        type: string
+        default: "dungeon-deploy/dungeon-demo"
+
+# One deploy at a time; never interrupt an in-flight one (it spends real gas).
+concurrency:
+  group: deploy-sepolia
+  cancel-in-progress: false
+
+# contents: write so the deploy can commit the sanitized manifest back.
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Requires repo secrets: TEE_SSH_HOST, TEE_SSH_USER, TEE_SSH_KEY, DEPLOY_ENV.
+    # See scripts/remote/deploy.sh for what runs on the server.
+    env:
+      SSH_HOST: ${{ secrets.TEE_SSH_HOST }}
+      SSH_USER: ${{ secrets.TEE_SSH_USER }}
+      DEPLOY_DIR: ${{ inputs.deploy_dir }}
+      DOJO_REF: ${{ inputs.dojo_ref }}
+      PREPARE_ONLY: ${{ inputs.prepare_only && '1' || '0' }}
+      REPO_URL: https://github.com/${{ github.repository }}.git
+      REPO_REF: ${{ github.ref_name }}
+    steps:
+      - name: Checkout (for committing the manifest)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.TEE_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          cat > ~/.ssh/config <<EOF
+          Host target
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/id_deploy
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Fresh-clone the repo on the server
+        run: |
+          ssh target "DEPLOY_DIR='$DEPLOY_DIR' REPO_URL='$REPO_URL' REPO_REF='$REPO_REF' bash -seu" <<'EOSSH'
+          dir="$HOME/$DEPLOY_DIR"
+          echo "→ fresh clone $REPO_URL@$REPO_REF → $dir"
+          rm -rf "$dir"
+          mkdir -p "$(dirname "$dir")"
+          git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$dir"
+          EOSSH
+
+      - name: Install .env on the server
+        env:
+          DEPLOY_ENV: ${{ secrets.DEPLOY_ENV }}
+        run: |
+          # Pipe the secret to the server over stdin so it never lands in a command
+          # line, a log line, or a file on the GitHub runner.
+          printf '%s' "$DEPLOY_ENV" | ssh target "cat > '$DEPLOY_DIR/.env' && chmod 600 '$DEPLOY_DIR/.env' && echo '→ wrote .env'"
+
+      - name: Run the fresh deploy
+        run: |
+          ssh target "cd \"\$HOME/$DEPLOY_DIR\" && DOJO_REF='$DOJO_REF' GIT_REF='$REPO_REF' GIT_SHA='${{ github.sha }}' PREPARE_ONLY='$PREPARE_ONLY' bash scripts/remote/deploy.sh"
+
+      - name: Commit the deployment manifest
+        if: ${{ inputs.prepare_only == false }}
+        run: |
+          # Pull the sanitized manifest dir off the server (no private keys — see
+          # the manifest() step in scripts/remote/deploy.sh) into this checkout.
+          ssh target "cd \"\$HOME/$DEPLOY_DIR\" && tar cf - deployments" | tar xf -
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deployments
+          if git diff --cached --quiet; then
+            echo "→ manifest unchanged — nothing to commit."
+          else
+            git commit -m "chore: record deployment manifest [skip ci]"
+            git push origin "HEAD:$REPO_REF"
+          fi
