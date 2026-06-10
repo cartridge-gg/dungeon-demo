@@ -16,10 +16,15 @@ import { resolve } from "node:path";
 import { account, DEMO_ROOT, loadDeployments, loadJson, provider, waitForRpc } from "./lib.ts";
 
 // The controller account artifacts embedded in katana (katana-slot-controller).
-const CLASSES_DIR = resolve(
-  DEMO_ROOT,
-  "../../crates/contracts/contracts/controller/account_sdk/artifacts/classes",
-);
+// In the monorepo they sit two levels up from this example; a standalone/remote
+// checkout has no such parent, so CONTROLLER_CLASSES_DIR overrides the location
+// (the remote deploy points it at the server's katana checkout).
+const CLASSES_DIR = process.env.CONTROLLER_CLASSES_DIR
+  ? resolve(process.env.CONTROLLER_CLASSES_DIR)
+  : resolve(
+      DEMO_ROOT,
+      "../../crates/contracts/contracts/controller/account_sdk/artifacts/classes",
+    );
 
 async function main() {
   const { appchain } = loadDeployments();
