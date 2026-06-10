@@ -10,9 +10,10 @@
 #             from the Scarb registry, so no checkout to wire up). Idempotent;
 #             touches nothing that's running.
 #   bring-up  tear down any running stack, FRESH-bootstrap piltover + the rollup,
-#             deploy the economy + worlds (real Sepolia gas), start the services
-#             under tmux, and health-check them (a failed check fails the deploy
-#             before the manifest is recorded). DESTRUCTIVE — kills the live demo.
+#             deploy the economy + worlds (real Sepolia gas), start the backend
+#             services under systemd (system units, Restart=always, enabled for
+#             boot), and health-check them (a failed check fails the deploy before
+#             the manifest is recorded). DESTRUCTIVE — kills the live demo.
 #
 # PREPARE_ONLY=1 stops after `prepare` (cairo build), spending no gas and leaving
 # any running stack alone — use it to validate the standalone build.
@@ -22,7 +23,6 @@
 #                         — the build whose `init rollup --settlement-chain` takes an
 #                         RPC URL; the system katana on PATH may be too old)
 #   CONTROLLER_CLASSES_DIR  Controller artifact dir (default: $HOME/katana/...)
-#   TMUX_SESSION          tmux session name for the services (default: dungeon)
 #   PREPARE_ONLY          1 = stop after the standalone build
 set -euo pipefail
 
@@ -31,12 +31,11 @@ DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICES="$DEMO_DIR/scripts/services"
 RUN_DIR="$DEMO_DIR/.run"
 
-TMUX_SESSION="${TMUX_SESSION:-dungeon}"
 TEE_REGISTRY_SALT="0x7ee"
 
 # The rollup tooling needs the katana build whose `init rollup --settlement-chain`
-# takes an RPC URL (the system PATH katana may predate that). _common.sh honors a
-# pre-set KATANA; the tmux service windows get it via RUNENV below.
+# takes an RPC URL (the system PATH katana may predate that). _common.sh and the
+# systemd units honor this KATANA.
 KATANA="${KATANA:-$HOME/katana/target/release/katana}"
 export KATANA
 
@@ -45,6 +44,10 @@ export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:$PA
 
 say()  { echo "→ $*"; }
 fail() { echo "error: $*" >&2; exit 1; }
+
+# systemd supervision for the backend services (units_install/start/enable/stop_all).
+# shellcheck source=scripts/remote/units.sh
+source "$DEMO_DIR/scripts/remote/units.sh"
 
 # ── prepare: make this checkout build on its own ────────────────────────────────
 prepare() {
@@ -88,14 +91,17 @@ load_common() {
 # ── tear down any running stack ─────────────────────────────────────────────────
 teardown() {
   say "tearing down running stack…"
+  # Stop+disable any dungeon units FIRST so Restart=always doesn't respawn them the
+  # moment we free their ports. (install rewrites the unit set during bring-up.)
+  units_stop_all
+  # Kill the legacy tmux session too (migration from the pre-systemd model).
   for s in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '^dungeon[0-9]*$' || true); do
     say "  killing tmux session $s"
     tmux kill-session -t "$s" 2>/dev/null || true
   done
   for p in "$APPCHAIN_PORT" \
            "$TORII_SCORE_HTTP" "$TORII_SCORE_GRPC" "$TORII_SCORE_RELAY" $((TORII_SCORE_RELAY+1)) $((TORII_SCORE_RELAY+2)) \
-           "$TORII_GAME_HTTP"  "$TORII_GAME_GRPC"  "$TORII_GAME_RELAY"  $((TORII_GAME_RELAY+1))  $((TORII_GAME_RELAY+2)) \
-           "$FRONTEND_PORT"; do
+           "$TORII_GAME_HTTP"  "$TORII_GAME_GRPC"  "$TORII_GAME_RELAY"  $((TORII_GAME_RELAY+1))  $((TORII_GAME_RELAY+2)); do
     free_port "$p"
   done
 }
@@ -103,6 +109,10 @@ teardown() {
 # ── FRESH bootstrap: mock TEE registry + piltover core + rollup config on Sepolia ─
 bootstrap() {
   mkdir -p "$RUN_DIR"
+  # FRESH: wipe the indexer/prover state so the new chain re-indexes from scratch.
+  # (The units run the service scripts WITHOUT RESET, so they resume on restart; the
+  # one-time FRESH wipe happens here instead.)
+  rm -rf "$RUN_DIR/saya-db" "$RUN_DIR/torii-score.db" "$RUN_DIR/torii-game.db"
   say "deploying mock TEE registry on $SETTLEMENT_NAME (saya-ops)…"
   local reg_out tee_registry
   reg_out=$(SETTLEMENT_RPC_URL="$SETTLEMENT_RPC_URL" \
@@ -156,25 +166,14 @@ bootstrap() {
     "$DEMO_DIR/deployments.json"
 }
 
-# Launch a service script in its own tmux window (creating the session on first call).
-RUNENV="export PATH=$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:\$PATH; export KATANA=$KATANA; cd $DEMO_DIR;"
-svc_window() {
-  local name="$1" cmd="$2"
-  if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-    tmux new-window -t "$TMUX_SESSION" -n "$name" "bash -lc \"$RUNENV $cmd 2>&1 | tee $RUN_DIR/$name.log\""
-  else
-    tmux new-session -d -s "$TMUX_SESSION" -n "$name" "bash -lc \"$RUNENV $cmd 2>&1 | tee $RUN_DIR/$name.log\""
-  fi
-}
-
 wait_http() { until curl -s -o /dev/null "$1" 2>/dev/null; do sleep 0.5; done; }
 
 # ── health check: assert every service actually responds after bring-up. Catches a
-#    service that started under tmux but crashed seconds later (bad world address,
-#    flaky RPC, port clash) — so a green deploy means a live stack, not just
-#    "tmux windows created". Runs BEFORE the manifest, so a broken deploy doesn't
-#    get recorded/committed. Checks loopback only (the authoritative signal); the
-#    public reverse-proxy URL is out of scope here. ───────────────────────────────
+#    service that systemd started but that crashed seconds later (bad world address,
+#    flaky RPC, port clash) — so a green deploy means a live stack, not just "units
+#    started". Runs BEFORE the manifest, so a broken deploy doesn't get
+#    recorded/committed. Checks loopback only (the authoritative signal); the public
+#    reverse-proxy URL is out of scope here. ──────────────────────────────────────
 health() {
   say "health check…"
   local ok=1
@@ -195,10 +194,9 @@ health() {
     -d '{"jsonrpc":"2.0","id":1,"method":"starknet_chainId","params":[]}'
   check "torii bank :$TORII_SCORE_HTTP" "http://localhost:$TORII_SCORE_HTTP/"
   check "torii game :$TORII_GAME_HTTP" "http://localhost:$TORII_GAME_HTTP/"
-  check "frontend :$FRONTEND_PORT" "https://localhost:$FRONTEND_PORT/" -k
   # saya-tee has no HTTP endpoint — assert the sidecar process is alive.
   if pgrep -f "saya-tee tee start" >/dev/null 2>&1; then say "  ✓ saya-tee"; else say "  ✗ saya-tee not running"; ok=0; fi
-  [[ "$ok" == "1" ]] || fail "health check failed — not all services are responding (inspect tmux session '$TMUX_SESSION' on the server)."
+  [[ "$ok" == "1" ]] || fail "health check failed — not all services are responding (check: sudo systemctl status 'dungeon-*' ; journalctl -u dungeon-appchain -n50)."
   say "all services healthy."
 }
 
@@ -241,14 +239,18 @@ manifest() {
   '
 }
 
-# ── bring the services up + deploy the economy/worlds in dependency order ────────
+# ── bring the backend services up under systemd + deploy the economy/worlds ──────
+# deploy.ts runs INLINE (between appchain/saya and the toriis) — never as a unit, so
+# a reboot restarts the services without re-deploying contracts (no gas).
 bringup() {
-  say "starting appchain node on :$APPCHAIN_PORT…"
-  svc_window appchain "scripts/services/appchain.sh"
+  units_install
+
+  say "starting appchain (dungeon-appchain) on :$APPCHAIN_PORT…"
+  units_start appchain
   wait_http "http://localhost:$APPCHAIN_PORT/"
 
-  say "starting saya-tee sidecar (settling to $SETTLEMENT_NAME)…"
-  svc_window saya "RESET=1 scripts/services/saya.sh"
+  say "starting saya-tee (dungeon-saya, settling to $SETTLEMENT_NAME)…"
+  units_start saya
 
   say "deploying economy + worlds (scripts/deploy.ts)…"
   ( cd "$DEMO_DIR" && bun run scripts/deploy.ts )
@@ -256,15 +258,12 @@ bringup() {
   say "declaring Controller account classes on the appchain…"
   ( cd "$DEMO_DIR" && CONTROLLER_CLASSES_DIR="$CONTROLLER_CLASSES_DIR" bun run scripts/declare-controller-class.ts )
 
-  say "starting torii (bank world on $SETTLEMENT_NAME) on :$TORII_SCORE_HTTP…"
-  svc_window torii-bank "RESET=1 scripts/services/torii-bank.sh"
-
-  say "starting torii (game world on appchain) on :$TORII_GAME_HTTP…"
-  svc_window torii-game "RESET=1 scripts/services/torii-game.sh"
+  say "starting toriis (dungeon-torii-bank :$TORII_SCORE_HTTP, dungeon-torii-game :$TORII_GAME_HTTP)…"
+  units_start torii-bank torii-game
   wait_http "http://localhost:$TORII_GAME_HTTP/"
 
-  say "starting frontend on :$FRONTEND_PORT…"
-  svc_window frontend "scripts/services/frontend.sh"
+  say "enabling units to start on boot…"
+  units_enable
 }
 
 main() {
@@ -284,12 +283,12 @@ main() {
   manifest
 
   echo ""
-  say "✓ fresh deploy complete — services under tmux session '$TMUX_SESSION':"
+  say "✓ fresh deploy complete — backend under systemd (enabled for boot):"
   echo "    settlement    : $SETTLEMENT_NAME ($SETTLEMENT_RPC_URL)"
   echo "    appchain RPC  : http://localhost:$APPCHAIN_PORT"
   echo "    torii (bank)  : http://localhost:$TORII_SCORE_HTTP/sql"
   echo "    torii (game)  : http://localhost:$TORII_GAME_HTTP/sql"
-  echo "    frontend      : https://localhost:$FRONTEND_PORT"
+  echo "    manage        : sudo systemctl status 'dungeon-*'  |  journalctl -u dungeon-appchain -f"
   echo ""
   say "deployment manifest (sanitized — committed by the workflow):"
   cat "$DEMO_DIR/deployments/$SETTLEMENT_NETWORK.json"

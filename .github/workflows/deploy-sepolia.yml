@@ -59,11 +59,16 @@ jobs:
 
       - name: Sync the repo to the server
         run: |
-          # Push the runner's authenticated checkout (this works for a private repo)
-          # to the server, so the server needs no GitHub credentials. Fresh dir each
-          # run; .git is excluded (the deploy reads GIT_REF/GIT_SHA from the env).
-          ssh target "rm -rf \"\$HOME/$DEPLOY_DIR\" && mkdir -p \"\$HOME/$DEPLOY_DIR\""
-          rsync -az --exclude '.git' -e ssh ./ "target:$DEPLOY_DIR/"
+          # Push the runner's authenticated checkout (works for a private repo) to the
+          # server, so the server needs no GitHub credentials. Stop the systemd units
+          # first so Restart=always doesn't run against half-replaced files, and
+          # preserve .run/ (chain + indexer state) and node_modules — deploy.sh's FRESH
+          # bootstrap wipes the stateful bits itself. .git is excluded (the deploy
+          # reads GIT_REF/GIT_SHA from the env).
+          ssh target "sudo systemctl stop 'dungeon-*.service' 2>/dev/null || true; mkdir -p \"\$HOME/$DEPLOY_DIR\""
+          rsync -az --delete \
+            --exclude '.git' --exclude '.run' --exclude 'node_modules' --exclude 'app/node_modules' \
+            -e ssh ./ "target:$DEPLOY_DIR/"
 
       - name: Install .env on the server
         env:
