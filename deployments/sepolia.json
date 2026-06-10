@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "network": "sepolia",
+    "deployedAt": "2026-06-10T20:07:31Z",
+    "gitRef": "main",
+    "gitSha": "e3f49760ab4dbe359d7df9a9c3472d0d622c8a83"
+  },
+  "settlement": {
+    "network": "sepolia",
+    "chainId": "SN_SEPOLIA",
+    "rpcUrl": "https://api.cartridge.gg/x/starknet/sepolia/rpc/v0_9",
+    "explorer": "https://sepolia.voyager.online",
+    "torii": "http://localhost:8091",
+    "piltover": "0x72ecce14b010d4ad236900177c6f56171a5a89951efd0fc508cb437cf0caef4",
+    "teeRegistry": "0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15",
+    "usdc": "0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343",
+    "gameToken": "0x2282b56a107eb9892bb7d9fe176c24c4d2fb3c589e22037cb9301af5097b68d",
+    "goldToken": "0x189ec888a074db8a95caf25544561cf8370288c61caefb151d6d06f143a9fec",
+    "bankWorld": "0x7d95299a93318cbeb8172fb67c15d7c5c16b90622e7556c17916d5ae00cc2d3",
+    "bankSystem": "0x304780bc84eeeda897b7e75540deff36183c96b19cc80b6eafbe5774e2aa733",
+    "tokenSale": "0x30f965391295b32e8d6e2a0d4776a7c9f080fd61c9b188076d24a54a5f5091d",
+    "entry": "0x472a32ca56a5eea1c3bcf530d135939baa5f79d7a8aa9ff7a98e0378aaf3f55",
+    "operator": "0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f"
+  },
+  "appchain": {
+    "rpcUrl": "http://localhost:5070",
+    "explorer": "http://localhost:5070/explorer",
+    "torii": "http://localhost:8092",
+    "gameWorld": "0x7f6c1c800301783a1a5a9378a6c3cdf237ad9ae21bb715c0bf5e408a450ab6e",
+    "gameSystem": "0x6d3d2eab82c4b17ee17eeae58f9981db04a8e9beeaa887b355ce7e57f085e97",
+    "devAccount": "0xdcbeb1f415c0c3e8ae300f3550ff9d649c03c2aeea5ec15f9862139ac3857b"
+  }
+}
