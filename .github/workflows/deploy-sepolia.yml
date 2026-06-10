@@ -77,18 +77,30 @@ jobs:
         run: |
           ssh target "cd \"\$HOME/$DEPLOY_DIR\" && GIT_REF='$REPO_REF' GIT_SHA='${{ github.sha }}' PREPARE_ONLY='$PREPARE_ONLY' bash scripts/remote/deploy.sh"
 
-      - name: Commit the deployment manifest
+      - name: Commit manifest + client config
         if: ${{ inputs.prepare_only == false }}
+        env:
+          # Public reverse-proxy base for the loopback-bound services (nginx vhost
+          # on the server). Override with a repo variable if the domain changes.
+          PUBLIC_BACKEND_URL: ${{ vars.PUBLIC_BACKEND_URL || 'https://dungeon-backend.cartridge.gg' }}
         run: |
           # Pull the sanitized manifest dir off the server (no private keys — see
           # the manifest() step in scripts/remote/deploy.sh) into this checkout.
           ssh target "cd \"\$HOME/$DEPLOY_DIR\" && tar cf - deployments" | tar xf -
+          # Regenerate the client config (deployments.json) the Vite app bundles:
+          # fresh addresses from the manifest + the public backend URLs. Committing it
+          # triggers deploy-pages.yml, so the live client tracks each deploy.
+          network=$(ssh target "node -e 'console.log(require(process.env.HOME + \"/$DEPLOY_DIR/deployments.json\").settlement.network)'")
+          node scripts/gen-client-deployments.mjs "deployments/$network.json" "$PUBLIC_BACKEND_URL" deployments.json
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add deployments
+          git add deployments deployments.json
           if git diff --cached --quiet; then
-            echo "→ manifest unchanged — nothing to commit."
+            echo "→ manifest + client config unchanged — nothing to commit."
           else
-            git commit -m "chore: record deployment manifest [skip ci]"
+            # No [skip ci]: committing deployments.json should trigger deploy-pages.yml
+            # to rebuild the client. (This workflow is workflow_dispatch-only, so the
+            # push can't re-trigger it — no loop.)
+            git commit -m "chore: record deployment manifest + client config"
             git push origin "HEAD:$REPO_REF"
           fi
