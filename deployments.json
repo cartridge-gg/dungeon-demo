@@ -4,20 +4,20 @@
     "chainId": "SN_SEPOLIA",
     "rpcUrl": "https://api.cartridge.gg/x/starknet/sepolia/rpc/v0_9",
     "explorer": "https://sepolia.voyager.online",
-    "torii": "http://localhost:8091",
-    "piltover": "0x6ddda1669a4f594c2a6c922e47081e3b9fd627d0da045b53012bae636f8d6fe",
+    "torii": "https://dungeon-backend.cartridge.gg/torii/score",
+    "piltover": "0x72ecce14b010d4ad236900177c6f56171a5a89951efd0fc508cb437cf0caef4",
     "usdc": "0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343",
-    "gameToken": "0x476d79c46f186018f7bfe9c5ad12a640b5a59ad0b0602275a1fa274e95b8de1",
-    "goldToken": "0x3b17b4ebfa73a9bafc951b6de0b9110d65af78e4555a90356bcc48b9cb8e763",
-    "bankWorld": "0x10cf0deda44ff218a29f9223945c5a01cd7c86667349334c43f4f4c53befae1",
-    "bankSystem": "0x3ab197dc7b89760f445f4640a3fe2a018b2d5f991b17b59f6a119eab2c2d6c",
-    "tokenSale": "0x7f48c547103fa23dcc10eb2ec17f72a8b3ba57fb16dbfbebf4217a28a8be73d",
-    "entry": "0x158828443eea1b9fbca6e913642740b7683588e33a8ab9826048a8992e9c412"
+    "gameToken": "0x2282b56a107eb9892bb7d9fe176c24c4d2fb3c589e22037cb9301af5097b68d",
+    "goldToken": "0x189ec888a074db8a95caf25544561cf8370288c61caefb151d6d06f143a9fec",
+    "bankWorld": "0x7d95299a93318cbeb8172fb67c15d7c5c16b90622e7556c17916d5ae00cc2d3",
+    "bankSystem": "0x304780bc84eeeda897b7e75540deff36183c96b19cc80b6eafbe5774e2aa733",
+    "tokenSale": "0x30f965391295b32e8d6e2a0d4776a7c9f080fd61c9b188076d24a54a5f5091d",
+    "entry": "0x472a32ca56a5eea1c3bcf530d135939baa5f79d7a8aa9ff7a98e0378aaf3f55"
   },
   "appchain": {
-    "rpcUrl": "http://localhost:5070",
-    "explorer": "http://localhost:5070/explorer",
-    "torii": "http://localhost:8092",
+    "rpcUrl": "https://dungeon-backend.cartridge.gg/rpc",
+    "explorer": "https://dungeon-backend.cartridge.gg/rpc/explorer",
+    "torii": "https://dungeon-backend.cartridge.gg/torii/game",
     "gameWorld": "0x7f6c1c800301783a1a5a9378a6c3cdf237ad9ae21bb715c0bf5e408a450ab6e",
     "gameSystem": "0x6d3d2eab82c4b17ee17eeae58f9981db04a8e9beeaa887b355ce7e57f085e97"
   }
