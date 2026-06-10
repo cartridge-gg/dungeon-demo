@@ -42,8 +42,10 @@ case "$SETTLEMENT_NETWORK" in
 esac
 [[ -n "${SETTLEMENT_RPC_URL:-}" ]] || svc_fail "set SETTLEMENT_RPC_URL (or SEPOLIA_RPC_URL) in .env."
 
-# katana binary (release > debug > PATH).
-if   [[ -x "$REPO_ROOT/target/release/katana" ]]; then KATANA="$REPO_ROOT/target/release/katana"
+# katana binary: honor a pre-set $KATANA (e.g. the remote deploy points at the
+# server's built binary), else release > debug > PATH.
+if   [[ -n "${KATANA:-}" && -x "${KATANA:-}" ]];   then :
+elif [[ -x "$REPO_ROOT/target/release/katana" ]]; then KATANA="$REPO_ROOT/target/release/katana"
 elif [[ -x "$REPO_ROOT/target/debug/katana"   ]]; then KATANA="$REPO_ROOT/target/debug/katana"
 elif command -v katana >/dev/null 2>&1;            then KATANA="$(command -v katana)"
 else svc_fail "katana binary not found — build it: ( cd \"$REPO_ROOT\" && cargo build --release )"; fi

@@ -17,6 +17,9 @@
 # any running stack alone — use it to validate the standalone build.
 #
 # Env knobs (all optional):
+#   KATANA                katana binary (default: $HOME/katana/target/release/katana
+#                         — the build whose `init rollup --settlement-chain` takes an
+#                         RPC URL; the system katana on PATH may be too old)
 #   CONTROLLER_CLASSES_DIR  Controller artifact dir (default: $HOME/katana/...)
 #   TMUX_SESSION          tmux session name for the services (default: dungeon)
 #   PREPARE_ONLY          1 = stop after the standalone build
@@ -30,6 +33,12 @@ RUN_DIR="$DEMO_DIR/.run"
 TMUX_SESSION="${TMUX_SESSION:-dungeon}"
 TEE_REGISTRY_SALT="0x7ee"
 
+# The rollup tooling needs the katana build whose `init rollup --settlement-chain`
+# takes an RPC URL (the system PATH katana may predate that). _common.sh honors a
+# pre-set KATANA; the tmux service windows get it via RUNENV below.
+KATANA="${KATANA:-$HOME/katana/target/release/katana}"
+export KATANA
+
 # Match the PATH the server's other launchers use (bun + scarb live under ~).
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:$PATH"
 
@@ -41,7 +50,7 @@ prepare() {
   command -v scarb  >/dev/null || fail "scarb not found on PATH (need 2.13.1)."
   command -v sozo   >/dev/null || fail "sozo not found on PATH (need 1.8.7)."
   command -v bun    >/dev/null || fail "bun not found on PATH."
-  command -v katana >/dev/null || fail "katana not found on PATH."
+  [[ -x "$KATANA" ]] || fail "katana not found/executable: $KATANA (set KATANA=… to the rollup-capable build)."
 
   # 1. Controller class artifacts (ship with katana). No monorepo parent here, so
   #    point declare-controller-class.ts at an existing katana checkout. Override
@@ -147,7 +156,7 @@ bootstrap() {
 }
 
 # Launch a service script in its own tmux window (creating the session on first call).
-RUNENV="export PATH=$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:\$PATH; cd $DEMO_DIR;"
+RUNENV="export PATH=$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:\$PATH; export KATANA=$KATANA; cd $DEMO_DIR;"
 svc_window() {
   local name="$1" cmd="$2"
   if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
