@@ -10,8 +10,9 @@
 #             from the Scarb registry, so no checkout to wire up). Idempotent;
 #             touches nothing that's running.
 #   bring-up  tear down any running stack, FRESH-bootstrap piltover + the rollup,
-#             deploy the economy + worlds (real Sepolia gas), and start the
-#             services under tmux. DESTRUCTIVE — kills the live demo.
+#             deploy the economy + worlds (real Sepolia gas), start the services
+#             under tmux, and health-check them (a failed check fails the deploy
+#             before the manifest is recorded). DESTRUCTIVE — kills the live demo.
 #
 # PREPARE_ONLY=1 stops after `prepare` (cairo build), spending no gas and leaving
 # any running stack alone — use it to validate the standalone build.
@@ -168,6 +169,39 @@ svc_window() {
 
 wait_http() { until curl -s -o /dev/null "$1" 2>/dev/null; do sleep 0.5; done; }
 
+# ── health check: assert every service actually responds after bring-up. Catches a
+#    service that started under tmux but crashed seconds later (bad world address,
+#    flaky RPC, port clash) — so a green deploy means a live stack, not just
+#    "tmux windows created". Runs BEFORE the manifest, so a broken deploy doesn't
+#    get recorded/committed. Checks loopback only (the authoritative signal); the
+#    public reverse-proxy URL is out of scope here. ───────────────────────────────
+health() {
+  say "health check…"
+  local ok=1
+  # check <label> <url> [extra curl args…] — retries ~30s; any HTTP reply = up.
+  check() {
+    local label="$1" url="$2"; shift 2
+    local i=0
+    while ! curl -sS -m 4 -o /dev/null "$@" "$url" 2>/dev/null; do
+      i=$((i + 1))
+      if [[ $i -ge 30 ]]; then say "  ✗ $label ($url) not responding"; ok=0; return 0; fi
+      sleep 1
+    done
+    say "  ✓ $label"
+    return 0
+  }
+  check "appchain RPC :$APPCHAIN_PORT" "http://localhost:$APPCHAIN_PORT" \
+    -X POST -H 'content-type: application/json' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"starknet_chainId","params":[]}'
+  check "torii bank :$TORII_SCORE_HTTP" "http://localhost:$TORII_SCORE_HTTP/"
+  check "torii game :$TORII_GAME_HTTP" "http://localhost:$TORII_GAME_HTTP/"
+  check "frontend :$FRONTEND_PORT" "https://localhost:$FRONTEND_PORT/" -k
+  # saya-tee has no HTTP endpoint — assert the sidecar process is alive.
+  if pgrep -f "saya-tee tee start" >/dev/null 2>&1; then say "  ✓ saya-tee"; else say "  ✗ saya-tee not running"; ok=0; fi
+  [[ "$ok" == "1" ]] || fail "health check failed — not all services are responding (inspect tmux session '$TMUX_SESSION' on the server)."
+  say "all services healthy."
+}
+
 # ── write a sanitized deployment manifest (NO private keys) for the workflow to
 #    commit. Projects deployments.json + the TEE registry + run metadata
 #    down to addresses / URLs / account addresses only. ─────────────────────────
@@ -246,6 +280,7 @@ main() {
   teardown
   bootstrap
   bringup
+  health
   manifest
 
   echo ""
