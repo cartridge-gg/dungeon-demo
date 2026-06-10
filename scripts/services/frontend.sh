@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # React + Vite frontend (HTTPS by default via mkcert; HTTP=1 for plain http — handled
-# by the vite config). Reads contract addresses from app/src/deployments.json.
+# by the vite config). Reads contract addresses from deployments.json (repo root).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 free_port "$FRONTEND_PORT"

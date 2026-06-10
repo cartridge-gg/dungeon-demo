@@ -166,7 +166,7 @@ node -e '
 ' "$CHAIN_DIR/genesis.json" "$SETTLEMENT_RPC_URL" "$OPERATOR_ADDRESS" "$OPERATOR_PRIVATE_KEY" \
   "$PILTOVER" "$USDC_ADDRESS" "$APPCHAIN_PORT" "$TORII_SCORE_HTTP" "$TORII_GAME_HTTP" \
   "$SETTLEMENT_EXPLORER" "$SETTLEMENT_NETWORK" "$SETTLEMENT_CHAIN_ID" \
-  "$DEMO_DIR/app/src/deployments.json"
+  "$DEMO_DIR/deployments.json"
 
 # 4. Appchain rollup node, settling to piltover on Sepolia, L1→L2 messaging on.
 #    --block-time 5000 mines on a 5s interval (instead of instant) so saya settles

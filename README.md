@@ -101,7 +101,7 @@ walkthrough: [docs/controller.md](./docs/controller.md).
 From a fresh deploy (`FRESH=1 ./up.sh`) on **2026-06-08**. Settlement is real
 **Starknet Sepolia**; the appchain is the local `DUNGEON` rollup. The Sepolia contracts
 (piltover, tokens, worlds) are **redeployed on every `FRESH=1`** — the always-current source
-is `app/src/deployments.json`. The appchain world/system and the TEE-registry mock are
+is `deployments.json` (repo root). The appchain world/system and the TEE-registry mock are
 derived from fixed seeds/salts, so they're stable across redeploys.
 
 ### Settlement — Starknet Sepolia ([Voyager](https://sepolia.voyager.online))

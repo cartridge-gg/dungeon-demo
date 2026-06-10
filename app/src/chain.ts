@@ -12,7 +12,7 @@
 
 import { Account, type AccountInterface, BlockTag, CallData, RpcProvider, TransactionFinalityStatus, cairo, ec, hash } from "starknet";
 import { ToriiClient } from "@dojoengine/torii-wasm";
-import deployments from "./deployments.json";
+import deployments from "../../deployments.json";
 
 // Settlement network: Sepolia by default, or mainnet — set via SETTLEMENT_NETWORK at
 // deploy time and recorded in deployments.json. Everything below is network-agnostic.

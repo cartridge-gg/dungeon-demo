@@ -143,7 +143,7 @@ bootstrap() {
   ' "$CHAIN_DIR/genesis.json" "$SETTLEMENT_RPC_URL" "$OPERATOR_ADDRESS" "$OPERATOR_PRIVATE_KEY" \
     "$PILTOVER" "$USDC_ADDRESS" "$APPCHAIN_PORT" "$TORII_SCORE_HTTP" "$TORII_GAME_HTTP" \
     "$SETTLEMENT_EXPLORER" "$SETTLEMENT_NETWORK" "$SETTLEMENT_CHAIN_ID" \
-    "$DEMO_DIR/app/src/deployments.json"
+    "$DEMO_DIR/deployments.json"
 }
 
 # Launch a service script in its own tmux window (creating the session on first call).
@@ -160,13 +160,13 @@ svc_window() {
 wait_http() { until curl -s -o /dev/null "$1" 2>/dev/null; do sleep 0.5; done; }
 
 # ── write a sanitized deployment manifest (NO private keys) for the workflow to
-#    commit. Projects app/src/deployments.json + the TEE registry + run metadata
+#    commit. Projects deployments.json + the TEE registry + run metadata
 #    down to addresses / URLs / account addresses only. ─────────────────────────
 manifest() {
   local out_dir="$DEMO_DIR/deployments"
   mkdir -p "$out_dir"
   say "writing deployment manifest → deployments/<network>.json…"
-  DEPLOYMENTS_FILE="$DEMO_DIR/app/src/deployments.json" \
+  DEPLOYMENTS_FILE="$DEMO_DIR/deployments.json" \
   TEE_REGISTRY="$(cat "$RUN_DIR/tee_registry" 2>/dev/null || true)" \
   GIT_REF="${GIT_REF:-$(git -C "$DEMO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)}" \
   GIT_SHA="${GIT_SHA:-$(git -C "$DEMO_DIR" rev-parse HEAD 2>/dev/null || true)}" \
