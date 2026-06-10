@@ -6,10 +6,10 @@ cairo-version = "2.13"
 
 [dependencies]
 starknet = "2.13"
-# Dojo is consumed from a sibling checkout so the world class hash matches the
-# locally installed `sozo` (1.8.7).
-dojo = { path = "../../../../../dojo/crates/dojo/core" }
-dojo_cairo_macros = { path = "../../../../../dojo/crates/dojo/macros" }
+# Dojo from the Scarb registry (scarbs.xyz), pinned to 1.8.0 — the crate version
+# behind `sozo` 1.8.7, so the world class hash matches the installed toolchain.
+dojo = "1.8.0"
+dojo_cairo_macros = "1.8.0"
 
 [[target.starknet-contract]]
 sierra = true

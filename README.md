@@ -36,8 +36,8 @@ This is *not* fully one-click — settling to a real chain needs real accounts.
 2. **Patched saya v0.4.0** (`saya-ops`, `saya-tee`) on PATH — a build with the
    Poseidon L1→L2 message-hash fix.
 3. **Dojo toolchain** (`sozo`/`torii`/`scarb`) via `asdf install` (pinned in
-   `.tool-versions`), and a sibling **dojo** checkout (the cairo packages depend on
-   it by path, ref `sozo/v1.8.7`).
+   `.tool-versions`). The cairo worlds pull **Dojo from the Scarb registry**
+   (`dojo = "1.8.0"`), so no separate dojo checkout is needed.
 4. **Bun**.
 5. A funded Sepolia **operator** account and a separate funded **saya** account,
    and a **USDC** address — all in `.env` (see below).

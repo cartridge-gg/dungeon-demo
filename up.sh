@@ -33,7 +33,6 @@ FRONTEND_PORT=3002
 TEE_REGISTRY_SALT="0x7ee"
 
 fail() { echo "error: $1" >&2; exit 1; }
-DOJO_DIR="$REPO_ROOT/../dojo"
 
 # ── Load .env ──────────────────────────────────────────────────────────────────
 [[ -f "$DEMO_DIR/.env" ]] || fail "no .env — copy .env.example to .env and fill in the operator/saya accounts + USDC address."
@@ -75,7 +74,6 @@ done
 for bin in sozo torii scarb; do
   command -v "$bin" >/dev/null 2>&1 || fail "'$bin' not found on PATH. Run 'asdf install' in this directory (see .tool-versions)."
 done
-[[ -d "$DOJO_DIR/crates/dojo/core" ]] || fail "dojo checkout not found at $DOJO_DIR — the cairo packages depend on it by path (clone it as a sibling, ref sozo/v1.8.7)."
 echo "→ katana: $KATANA"
 echo "→ settlement: $SETTLEMENT_NAME ($SETTLEMENT_RPC_URL)"
 
