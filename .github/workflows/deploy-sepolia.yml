@@ -19,9 +19,12 @@ concurrency:
   group: deploy-sepolia
   cancel-in-progress: false
 
-# contents: write so the deploy can commit the sanitized manifest back.
+# contents: write so the deploy can commit the sanitized manifest/client config back;
+# actions: write so it can dispatch deploy-pages.yml afterwards (a GITHUB_TOKEN commit
+# can't trigger another workflow, so we trigger the client rebuild explicitly).
 permissions:
   contents: write
+  actions: write
 
 jobs:
   deploy:
@@ -83,6 +86,7 @@ jobs:
           ssh target "cd \"\$HOME/$DEPLOY_DIR\" && GIT_REF='$REPO_REF' GIT_SHA='${{ github.sha }}' PREPARE_ONLY='$PREPARE_ONLY' bash scripts/remote/deploy.sh"
 
       - name: Commit manifest + client config
+        id: client
         if: ${{ inputs.prepare_only == false }}
         env:
           # Public reverse-proxy base for the loopback-bound services (nginx vhost
@@ -93,8 +97,7 @@ jobs:
           # the manifest() step in scripts/remote/deploy.sh) into this checkout.
           ssh target "cd \"\$HOME/$DEPLOY_DIR\" && tar cf - deployments" | tar xf -
           # Regenerate the client config (deployments.json) the Vite app bundles:
-          # fresh addresses from the manifest + the public backend URLs. Committing it
-          # triggers deploy-pages.yml, so the live client tracks each deploy.
+          # fresh addresses from the manifest + the public backend URLs.
           network=$(ssh target "node -e 'console.log(require(process.env.HOME + \"/$DEPLOY_DIR/deployments.json\").settlement.network)'")
           node scripts/gen-client-deployments.mjs "deployments/$network.json" "$PUBLIC_BACKEND_URL" deployments.json
           git config user.name  "github-actions[bot]"
@@ -102,10 +105,22 @@ jobs:
           git add deployments deployments.json
           if git diff --cached --quiet; then
             echo "→ manifest + client config unchanged — nothing to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            # No [skip ci]: committing deployments.json should trigger deploy-pages.yml
-            # to rebuild the client. (This workflow is workflow_dispatch-only, so the
-            # push can't re-trigger it — no loop.)
             git commit -m "chore: record deployment manifest + client config"
             git push origin "HEAD:$REPO_REF"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Rebuild + publish the client (deploy-pages)
+        if: ${{ inputs.prepare_only == false && steps.client.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A GITHUB_TOKEN-authored commit does NOT trigger another workflow, so the
+          # deployments.json push above won't fire deploy-pages.yml on its own. Dispatch
+          # it explicitly: it rebuilds the Vite client from $REPO_REF (now carrying the
+          # fresh deployments.json) and republishes to Pages, so the live client tracks
+          # this deploy automatically.
+          gh workflow run deploy-pages.yml --ref "$REPO_REF"
+          echo "→ dispatched deploy-pages.yml on $REPO_REF — client will rebuild with the new config"
