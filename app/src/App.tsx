@@ -937,6 +937,51 @@ export default function App() {
     };
   }, []);
 
+  // Fast run-state poll. The game-world gRPC subscription only fires on SEALED blocks,
+  // so with `--block-time` the active run's screen lags ~5s — even though Torii indexes
+  // the pre-confirmed block and has the new RunState within ~1s of an action. Poll just
+  // that one LOCAL read (`readRun` → game-world Torii) every 400ms so a move's depth/hp/
+  // gold update immediately. The 5s tick still covers the Sepolia-touching reads
+  // (balances, vault, withdrawals), which must NOT be polled this fast.
+  const fastOutcomeRef = useRef<number | null>(null); // runNo whose outcome we've pulled
+  useEffect(() => {
+    if (!DEPLOYED || !player || selectedRun == null) return;
+    let cancelled = false;
+    fastOutcomeRef.current = null;
+    const h = setInterval(async () => {
+      try {
+        const r = await chain.readRun(selectedRun);
+        if (cancelled || !r) return;
+        setRunState(r);
+        // The moment the displayed run ends (death OR extract), pull its outcome record
+        // + the Sepolia reads ONCE so the outcome veil — driven by `lastEnded`, otherwise
+        // only read on the 5s tick — shows immediately. LEVEL-triggered and keyed on runNo
+        // (not an alive-EDGE) so it survives this effect re-running mid-action: the
+        // Controller blips `player` to undefined while it switches chains on every action,
+        // which tears down + re-creates this effect and would lose an edge flag.
+        // Both reads hit the local game-world Torii (pre-confirmed), so the veil is ~instant.
+        if (!r.alive && fastOutcomeRef.current !== r.runNo) {
+          // getLastRunEnded returns the player's latest RunEnded; the RunEnded model can
+          // index a poll AFTER RunState.alive flips, so wait until it's actually THIS run
+          // before showing the veil + refreshing balances (and only mark done then, so we
+          // keep retrying until it matches).
+          const ended = await chain.getLastRunEnded(player).catch(() => null);
+          if (!cancelled && ended && ended.runNo === r.runNo) {
+            fastOutcomeRef.current = r.runNo;
+            setLastEnded(ended);
+            tickRef.current();
+          }
+        }
+      } catch {
+        // transient — the 5s tick is the backstop
+      }
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearInterval(h);
+    };
+  }, [player, selectedRun]);
+
   // Bank-world (Sepolia) live updates are per-player — only subscribe while a wallet is
   // connected, so the idle starting page runs a single torii-wasm client.
   useEffect(() => {
