@@ -3,7 +3,7 @@
 This guide builds the mental model for an appchain app that **settles to a real
 public chain** and **leans on an external settlement-layer contract**, using the
 dungeon game as the running example. It builds the model from the ground up —
-worlds, messaging, saya, Torii — for the case where the settlement layer is
+worlds, messaging, settlement, Torii — for the case where the settlement layer is
 **real Starknet Sepolia** and there's a **token economy** in front of the
 cross-chain loop.
 
@@ -11,8 +11,9 @@ cross-chain loop.
 
 1. **[Architecture](./architecture.md)** — the worlds, the one-appchain /
    real-Sepolia split, the USDC → GAME_TOKEN economy, and the read/write paths.
-2. **[Services](./services.md)** — the appchain Katana, piltover on Sepolia, saya
-   (`--mock-prove`, settling to a real chain), and the two Torii indexers.
+2. **[Services](./services.md)** — the appchain Katana (with its embedded settlement
+   service, `--tee mock`, settling to a real chain), piltover on Sepolia, and the
+   two Torii indexers.
 3. **[Contracts](./contracts.md)** — the dungeon world, the token contracts, both
    messaging directions, and the death-is-local / extract-commits design.
 4. **[Deployment](./deployment.md)** — toolchain, deploy order (token + worlds +

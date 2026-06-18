@@ -14,7 +14,7 @@ It runs **one** local Katana (the appchain) and settles to a **real public chain
 with a token economy layered on top of an external contract (USDC).
 
 > New to the appchain architecture? Read the [guide](./docs/README.md) — it builds
-> the mental model (worlds, messaging, saya, Torii) using this game as the example.
+> the mental model (worlds, messaging, settlement, Torii) using this game as the example.
 
 ## Highlights
 
@@ -32,26 +32,30 @@ with a token economy layered on top of an external contract (USDC).
 
 This is *not* fully one-click — settling to a real chain needs real accounts.
 
-1. A **katana** binary on PATH (or built from source).
-2. **Patched saya v0.4.0** (`saya-ops`, `saya-tee`) on PATH — a build with the
-   Poseidon L1→L2 message-hash fix.
+1. A **katana** built from the embedded-settlement branch — the appchain node
+   settles to piltover itself (no saya-tee sidecar). Point `KATANA` at it in `.env`
+   (or put it on PATH).
+2. **`saya-ops` v0.4.0** on PATH — used once to deploy the mock TEE registry. The
+   `saya-tee` sidecar and its Poseidon message-hash patch are no longer needed
+   (katana computes the Poseidon hash itself).
 3. **Dojo toolchain** (`sozo`/`torii`/`scarb`) via `asdf install` (pinned in
    `.tool-versions`). The cairo worlds pull **Dojo from the Scarb registry**
    (`dojo = "1.8.0"`), so no separate dojo checkout is needed.
 4. **Bun**.
-5. A funded Sepolia **operator** account and a separate funded **saya** account,
+5. A funded Sepolia **operator** account and a separate funded **settlement** account,
    and a **USDC** address — all in `.env` (see below).
 
 ## Run it
 
 ```bash
-cp .env.example .env     # fill in SEPOLIA_RPC_URL, operator + saya accounts, USDC
-./up.sh                  # appchain :5070, saya → Sepolia, torii ×2, frontend :3002
+cp .env.example .env     # fill in KATANA, SEPOLIA_RPC_URL, operator + settlement accounts, USDC
+./up.sh                  # appchain :5070 (settles → Sepolia), torii ×2, frontend :3002
 ```
 
 `up.sh` deploys the mock TEE registry + piltover core on Sepolia, starts the
-appchain and saya, deploys the economy + worlds (`scripts/deploy.ts`), starts both
-Torii indexers, and serves the client. `./down.sh` stops the local processes.
+appchain (whose embedded settlement service settles to piltover itself), deploys the
+economy + worlds (`scripts/deploy.ts`), starts both Torii indexers, and serves the
+client. `./down.sh` stops the local processes.
 
 Then open `http://localhost:3002`, **Dev-mint** some GAME (or **Buy** it with
 USDC), start a **New Game** (each dive is its own run — you can keep several open and
@@ -60,11 +64,12 @@ then on the **Bank** tab withdraw the vault to Sepolia to mint **GOLD**.
 
 ## Funding & costs
 
-Every deploy and every `saya update_state` is a **real Sepolia transaction**:
+Every deploy and every `update_state` is a **real Sepolia transaction**:
 
 - The **operator** pays for the TEE registry, piltover, the GAME/GOLD/sale/entry
   contracts, and the bank-world migration.
-- **saya** pays for `update_state` on every settled batch (recurring) — give it a
+- The **settlement account** pays for `update_state` on every settled batch
+  (recurring) — the appchain's embedded settlement service submits these. Give it a
   **dedicated** funded account, never shared with the operator (nonce contention
   stalls settlement).
 - The **player** path: `Dev-mint` needs only Sepolia gas (no USDC); `Buy` needs
@@ -89,7 +94,7 @@ walkthrough: [docs/controller.md](./docs/controller.md).
 | `cairo/score` | settlement `bank` world (`bank` namespace) — mints GOLD when a withdrawal settles |
 | `cairo/token` | `game_token` (GAME), `gold_token` (GOLD), `token_sale` (USDC→GAME), `entry` (charge + L1→L2) |
 | `scripts/` | `deploy.ts` + `lib.ts` (deploy economy + migrate worlds), `declare-controller-class.ts` |
-| `scripts/services/` | one launcher per long-lived service — `appchain.sh`, `saya.sh`, `torii-bank.sh`, `torii-game.sh`, `frontend.sh`. Run any on its own (e.g. `RESET=1 scripts/services/torii-bank.sh` to re-index the bank indexer); `up.sh` does the bootstrap/deploy then delegates to these |
+| `scripts/services/` | one launcher per long-lived service — `appchain.sh` (runs katana incl. the embedded settlement service), `torii-bank.sh`, `torii-game.sh`, `frontend.sh`. Run any on its own (e.g. `RESET=1 scripts/services/torii-bank.sh` to re-index the bank indexer); `up.sh` does the bootstrap/deploy then delegates to these |
 | `app/` | React + Vite terminal client (`app/src/chain.ts`, `App.tsx`, `wallet.tsx`) |
 | `design/ui-mockup.html` | the standalone terminal-UI design mockup |
 | `up.sh` / `down.sh` | one-command bring-up / teardown |
@@ -144,5 +149,5 @@ with (see `scripts/declare-controller-class.ts`).
 | Role | Address |
 | --- | --- |
 | Operator (settlement deploys + dev signer) | [`0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f`](https://sepolia.voyager.online/contract/0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f) |
-| saya (piltover operator — settles appchain state) | [`0x0639956bAB912477F04fa7b9189d014E785092E795b3B57E9481f89642cde52B`](https://sepolia.voyager.online/contract/0x0639956bAB912477F04fa7b9189d014E785092E795b3B57E9481f89642cde52B) |
+| Settlement account (piltover operator — the embedded service's `update_state` signer) | [`0x0639956bAB912477F04fa7b9189d014E785092E795b3B57E9481f89642cde52B`](https://sepolia.voyager.online/contract/0x0639956bAB912477F04fa7b9189d014E785092E795b3B57E9481f89642cde52B) |
 | Appchain dev account (default play signer) | `0xdcbeb1f415c0c3e8ae300f3550ff9d649c03c2aeea5ec15f9862139ac3857b` |

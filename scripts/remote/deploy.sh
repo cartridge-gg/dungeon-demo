@@ -139,6 +139,22 @@ bootstrap() {
   [[ -n "$PILTOVER" ]] || { cat "$RUN_DIR/init.log" >&2; fail "could not parse piltover from $CHAIN_DIR/config.toml."; }
   say "  piltover=$PILTOVER"
 
+  # Enable katana's embedded settlement service: add the operator-owned
+  # [settlement.runtime] section so the appchain node settles itself (proves each
+  # block + submits update_state), replacing the old saya-tee sidecar. The saya
+  # account's key lands in config.toml in plaintext — server-local (.run is gitignored).
+  if ! grep -q '^\[settlement.runtime\]' "$CHAIN_DIR/config.toml"; then
+    say "  adding [settlement.runtime] (embedded settlement)…"
+    cat >> "$CHAIN_DIR/config.toml" <<EOF
+
+[settlement.runtime]
+account-address = "$SAYA_ADDRESS"
+account-private-key = "$SAYA_PRIVATE_KEY"
+tee-registry = "$tee_registry"
+batch-size = ${SAYA_BATCH_SIZE:-1}
+EOF
+  fi
+
   say "writing base deployments.json…"
   node -e '
     const fs = require("node:fs");
@@ -194,8 +210,13 @@ health() {
     -d '{"jsonrpc":"2.0","id":1,"method":"starknet_chainId","params":[]}'
   check "torii bank :$TORII_SCORE_HTTP" "http://localhost:$TORII_SCORE_HTTP/"
   check "torii game :$TORII_GAME_HTTP" "http://localhost:$TORII_GAME_HTTP/"
-  # saya-tee has no HTTP endpoint — assert the sidecar process is alive.
-  if pgrep -f "saya-tee tee start" >/dev/null 2>&1; then say "  ✓ saya-tee"; else say "  ✗ saya-tee not running"; ok=0; fi
+  # Settlement runs inside the appchain node now (the embedded service has no HTTP
+  # endpoint) — assert it started from the appchain unit's journal.
+  if journalctl -u "${PFX}-appchain" --no-pager 2>/dev/null | grep -q "Settlement service started"; then
+    say "  ✓ embedded settlement"
+  else
+    say "  ✗ embedded settlement not started (journalctl -u ${PFX}-appchain)"; ok=0
+  fi
   [[ "$ok" == "1" ]] || fail "health check failed — not all services are responding (check: sudo systemctl status 'dungeon-*' ; journalctl -u dungeon-appchain -n50)."
   say "all services healthy."
 }
@@ -240,17 +261,16 @@ manifest() {
 }
 
 # ── bring the backend services up under systemd + deploy the economy/worlds ──────
-# deploy.ts runs INLINE (between appchain/saya and the toriis) — never as a unit, so
+# deploy.ts runs INLINE (between the appchain and the toriis) — never as a unit, so
 # a reboot restarts the services without re-deploying contracts (no gas).
 bringup() {
   units_install
 
+  # The appchain unit runs katana with the [settlement.runtime] section, so it
+  # settles to piltover itself — no separate saya unit.
   say "starting appchain (dungeon-appchain) on :$APPCHAIN_PORT…"
   units_start appchain
   wait_http "http://localhost:$APPCHAIN_PORT/"
-
-  say "starting saya-tee (dungeon-saya, settling to $SETTLEMENT_NAME)…"
-  units_start saya
 
   say "deploying economy + worlds (scripts/deploy.ts)…"
   ( cd "$DEMO_DIR" && bun run scripts/deploy.ts )

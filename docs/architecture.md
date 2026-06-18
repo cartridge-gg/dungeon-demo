@@ -59,7 +59,7 @@ real economic weight:
 - **L2 → L1 (settled, batched):** `extract()` banks a run's gold into the on-L2
   vault (no message). When the player chooses to bank, `withdraw()` calls
   `send_message_to_l1` with `[player, amount, withdraw_no]` for the *whole* vault;
-  once saya settles that block, `bank.bank` on Sepolia consumes it and mints GOLD.
+  once the appchain settles that block, `bank.bank` on Sepolia consumes it and mints GOLD.
 
 **Death forfeits, extract banks, withdraw bridges.** If HP hits 0 the in-progress
 run's gold is lost (it never reached the vault). Extracting locks a run's gold into

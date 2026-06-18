@@ -3,17 +3,17 @@
 [← architecture](./architecture.md) · Next: [contracts →](./contracts.md)
 
 The processes that make up the running system. The defining trait: **the settlement
-layer is remote** — there's no second local Katana, and saya/piltover/Torii all
-point at real Sepolia.
+layer is remote** — there's no second local Katana; piltover/Torii point at real
+Sepolia, and the appchain settles to it through its own embedded service.
 
 ```
    Starknet Sepolia (remote)                     Local appchain (Katana rollup, :5070)
   ┌─────────────────────────────────┐           ┌──────────────────────────────┐
   │ piltover core   score world      │   L1→L2   │  game world (dungeon)        │
-  │ GAME_TOKEN  TokenSale  Entry      │ ◄───────► │                              │
+  │ GAME_TOKEN  TokenSale  Entry      │ ◄───────► │  + embedded settlement       │
   │       ▲            ▲              │   L2→L1   └───────┬──────────────────────┘
   └───────│────────────│─────────────┘ (settled)         │ update_state
-          │ index      │ index                    saya ──┘ (--mock-prove)
+          │ index      │ index          ◄────────────────┘ (--tee mock)
        Torii(:8091)  Torii(:8092)◄── client ──┐
           (Sepolia)    (appchain)             └── reads/writes
 ```
@@ -49,33 +49,39 @@ deploy). Same interface as before — `send_message_to_appchain` (L1→L2),
 `get_state` (settled height for the UI gauge). The difference is purely that it
 lives on a public chain, so its operator account must be funded with real STRK.
 
-## saya — the prover, now settling to a real chain
+## Settlement — the appchain settles itself
 
-The `saya-tee --mock-prove` sidecar watches the appchain, proves each block, and
-submits `update_state` to the piltover core **on Sepolia**:
+Settlement is **embedded in the appchain Katana** — there's no separate prover
+sidecar. `init rollup` writes the settlement *layer* (where to settle) into the
+chain config; the operator then adds a `[settlement.runtime]` section (the settling
+account + key, TEE registry, batching) that turns the node into an active settler:
 
-```bash
-saya-tee tee start --mock-prove \
-  --rollup-rpc http://localhost:5070 \
-  --settlement-rpc "$SEPOLIA_RPC_URL" \
-  --settlement-piltover-address "$PILTOVER" \
-  --settlement-account-address "$SAYA_ADDRESS" ...
+```toml
+# .run/chain-config/config.toml  (appended by up.sh / deploy.sh)
+[settlement.runtime]
+account-address = "<SAYA_ADDRESS>"
+account-private-key = "<SAYA_PRIVATE_KEY>"
+tee-registry = "<TEE_REGISTRY>"
+batch-size = 1
 ```
+
+With that present, the node (run with `--tee mock`) proves each block and submits
+`update_state` to the piltover core **on Sepolia** itself — the job that used to
+belong to the `saya-tee` sidecar.
 
 Two consequences of settling to a real chain:
 
-- **saya pays real gas** for every `update_state`. Give it a **dedicated** funded
-  account, distinct from the operator — sharing one causes nonce contention that
-  stalls settlement. `init rollup` and `saya`
-  must use the *same* account (the piltover operator is the only `update_state`
-  caller), and that account is the saya account here.
-- **`--mock-prove` still applies.** It exercises the settlement plumbing (message
-  hashes, state roots) against a real chain without a real SP1/TEE prover. And the
-  **Poseidon L1→L2 hash patch is still required** — a Starknet-settled appchain
-  hashes L1→L2 messages with Poseidon, and stock saya 0.4.0 ships keccak, which
-  stalls every entry. See [contracts.md](./contracts.md#the-message-hash-gotcha).
+- **The settlement account pays real gas** for every `update_state`. Give it a
+  **dedicated** funded account, distinct from the operator — sharing one causes
+  nonce contention that stalls settlement. `init rollup` and the
+  `[settlement.runtime]` account must be the *same* (the piltover operator is the
+  only `update_state` caller).
+- **`--tee mock` still applies.** It exercises the settlement plumbing (message
+  hashes, state roots) against a real chain without a real SP1/TEE prover. The old
+  Poseidon L1→L2 hash patch is **no longer needed** — katana computes the Poseidon
+  message hash itself, so entries settle without the keccak/Poseidon mismatch.
 
-The **mock TEE registry** (the on-L1 attestation verifier) is also deployed on
+The **mock TEE registry** (the on-L1 attestation verifier) is still deployed on
 Sepolia, by `saya-ops`, before `init rollup`.
 
 ## Torii — the indexers (one per chain)
@@ -104,7 +110,7 @@ See [interval-mining.md](./interval-mining.md).
 | Enter | client → `entry` → piltover (Sepolia) | charge GAME, emit `MessageSent` |
 | Relay | appchain Katana (`--messaging.enabled`) | runs `mint_run` |
 | Play | client → `game` system (appchain) | one tx per action; `extract` → `send_message_to_l1` |
-| Settle | saya → piltover (Sepolia) | registers L2→L1 message hashes |
+| Settle | appchain's embedded settlement → piltover (Sepolia) | registers L2→L1 message hashes |
 | Bank | client → `score` (Sepolia) | `consume_message_from_appchain` + mint reward |
 | Read | client → Torii ×2 + RPC | run state, feeds, balances, settled height |
 

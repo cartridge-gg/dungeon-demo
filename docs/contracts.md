@@ -149,12 +149,15 @@ The reverse dependency (the bank consumer needs the appchain sender's address) i
 supplied by the **client at call time** as `from_address`, so there's no deploy
 cycle. Full order in [deployment.md](./deployment.md).
 
-## The message-hash gotcha
+## The message-hash gotcha (handled by katana)
 
 A Starknet-settled appchain hashes **L1→L2** messages with **Poseidon**; Ethereum
-L1s use keccak. saya 0.4.0 ships keccak, so on a Starknet settlement chain
-(including Sepolia) the hash won't match and **every entry stalls in settlement**.
-Use the patched saya (a build with the Poseidon fix) — see
-[services.md](./services.md#saya--the-prover-now-settling-to-a-real-chain).
+L1s use keccak. If the settler used the keccak formula, the hash wouldn't match on a
+Starknet settlement chain (including Sepolia) and **every entry would stall in
+settlement**. Katana's embedded settlement service computes the Poseidon hash, so
+this is handled out of the box — no external prover or message-hash patch. (Historic
+note: the old `saya-tee 0.4.0` sidecar shipped keccak and needed a Poseidon patch;
+that's no longer part of this demo — see
+[services.md](./services.md#settlement--the-appchain-settles-itself).)
 
 Next: [build, deploy, and run the stack →](./deployment.md)

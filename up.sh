@@ -6,15 +6,17 @@
 #     + piltover core         (deployed by `katana init rollup --tee`)
 #     + mock TEE registry     (deployed by `saya-ops`)
 #     + GAME_TOKEN / TokenSale / Entry / score world  (deployed by scripts/deploy.ts)
-#   appchain Katana (:5070, rollup, --tee mock) settling to piltover on Sepolia
-#   saya-tee --mock-prove sidecar (proves appchain blocks → update_state on Sepolia)
+#   appchain Katana (:5070, rollup, --tee mock) settling to piltover on Sepolia,
+#     with its embedded settlement service (the [settlement.runtime] section)
+#     proving each block and submitting update_state itself — no saya-tee sidecar.
 #   two torii indexers (Sepolia score :8091, appchain game :8092)
 #   React frontend (:3002)
 #
 # Requires a funded Sepolia operator + saya account and a USDC address — see
-# .env.example (copy to .env). These deploys cost real Sepolia gas.
+# .env.example (copy to .env). These deploys cost real Sepolia gas. Also requires
+# a katana built from the embedded-settlement branch (set KATANA — see .env.example).
 #
-# Ctrl-C tears down the appchain node, the saya-tee sidecar, and the toriis.
+# Ctrl-C tears down the appchain node and the toriis.
 set -euo pipefail
 
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,14 +65,19 @@ else
   echo "  warning: asdf not found — install it, or put sozo/torii/scarb on PATH (see .tool-versions)." >&2
 fi
 
-if [[ -x "$REPO_ROOT/target/release/katana" ]]; then KATANA="$REPO_ROOT/target/release/katana"
-elif [[ -x "$REPO_ROOT/target/debug/katana" ]]; then KATANA="$REPO_ROOT/target/debug/katana"
-elif command -v katana >/dev/null 2>&1; then KATANA="$(command -v katana)"
-else fail "katana binary not found. Build it:  ( cd \"$REPO_ROOT\" && cargo build --release )"; fi
+# katana — must be the embedded-settlement build (it settles itself; no saya-tee).
+# Honor a pre-set $KATANA (point it at the branch's target/debug/katana — see
+# .env.example); else release > debug > PATH. Mirrors scripts/services/_common.sh.
+if   [[ -n "${KATANA:-}" && -x "${KATANA:-}" ]];   then :
+elif [[ -x "$REPO_ROOT/target/release/katana" ]]; then KATANA="$REPO_ROOT/target/release/katana"
+elif [[ -x "$REPO_ROOT/target/debug/katana"   ]]; then KATANA="$REPO_ROOT/target/debug/katana"
+elif command -v katana >/dev/null 2>&1;            then KATANA="$(command -v katana)"
+else fail "katana binary not found. Set KATANA to your embedded-settlement build (see .env.example), or build katana and put it on PATH."; fi
 
-for bin in saya-ops saya-tee; do
-  command -v "$bin" >/dev/null 2>&1 || fail "'$bin' not found on PATH. Install the patched saya v0.4.0 (the Poseidon L1→L2 message-hash fix)."
-done
+# saya-ops — used once to deploy the mock TEE registry (a bootstrap helper, not the
+# settlement sidecar). Settlement is now done by katana's embedded service, so
+# saya-tee and its Poseidon-hash patch are no longer needed.
+command -v saya-ops >/dev/null 2>&1 || fail "'saya-ops' not found on PATH. Install saya v0.4.0."
 for bin in sozo torii scarb; do
   command -v "$bin" >/dev/null 2>&1 || fail "'$bin' not found on PATH. Run 'asdf install' in this directory (see .tool-versions)."
 done
@@ -90,12 +97,11 @@ command -v paymaster-service >/dev/null 2>&1 \
   || echo "  note: 'paymaster-service' not on PATH — katana will try to fetch it (cartridge-gg/paymaster); see docs/controller.md." >&2
 echo "→ appchain is Controller-capable. Login with a Cartridge Controller (hosted keychain)."
 
-APPCHAIN_PID=""; SAYA_PID=""; TORII_SCORE_PID=""; TORII_GAME_PID=""
+APPCHAIN_PID=""; TORII_SCORE_PID=""; TORII_GAME_PID=""
 cleanup() {
   echo ""; echo "→ shutting down…"
   [[ -n "$TORII_GAME_PID" ]] && kill "$TORII_GAME_PID" 2>/dev/null || true
   [[ -n "$TORII_SCORE_PID" ]] && kill "$TORII_SCORE_PID" 2>/dev/null || true
-  [[ -n "$SAYA_PID" ]] && kill "$SAYA_PID" 2>/dev/null || true
   [[ -n "$APPCHAIN_PID" ]] && kill "$APPCHAIN_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
@@ -140,6 +146,25 @@ PILTOVER=$(sed -nE 's/^core_contract = "(0x[0-9a-fA-F]+)".*/\1/p' "$CHAIN_DIR/co
 [[ -n "$PILTOVER" ]] || { echo "error: could not parse piltover address from config.toml" >&2; cat "$RUN_DIR/init.log" 2>/dev/null >&2; exit 1; }
 echo "   piltover=$PILTOVER"
 
+# Enable katana's embedded settlement service. `init rollup` writes only the
+# settlement *layer*; the operator adds the [settlement.runtime] section (the saya
+# account + key, TEE registry, batching) that turns the appchain node into an active
+# settler — it proves each block and submits update_state itself, the job that used
+# to belong to the saya-tee sidecar. Idempotent: the chain config persists across
+# runs, so only append when the section isn't already there. The private key lands
+# in .run/chain-config/config.toml in plaintext — operator-local (.run is gitignored).
+if ! grep -q '^\[settlement.runtime\]' "$CHAIN_DIR/config.toml"; then
+  echo "→ adding [settlement.runtime] (embedded settlement, replaces saya-tee)…"
+  cat >> "$CHAIN_DIR/config.toml" <<EOF
+
+[settlement.runtime]
+account-address = "$SAYA_ADDRESS"
+account-private-key = "$SAYA_PRIVATE_KEY"
+tee-registry = "$TEE_REGISTRY"
+batch-size = ${SAYA_BATCH_SIZE:-1}
+EOF
+fi
+
 # 3. Base deployments.json (settlement network/rpc/accounts, piltover, USDC). The
 #    appchain account comes from the generated rollup genesis.
 echo "→ writing base deployments.json…"
@@ -169,7 +194,7 @@ node -e '
   "$DEMO_DIR/deployments.json"
 
 # 4. Appchain rollup node, settling to piltover on Sepolia, L1→L2 messaging on.
-#    --block-time 5000 mines on a 5s interval (instead of instant) so saya settles
+#    --block-time 5000 mines on a 5s interval (instead of instant) so the embedded settlement service settles
 #    at a steady cadence rather than bursting a block per action.
 #    --data-dir persists appchain state to disk so a katana restart keeps the game
 #    world + runs (an in-memory chain would lose them and force a full redeploy).
@@ -178,11 +203,10 @@ echo "→ starting appchain node on :${APPCHAIN_PORT}…"
 APPCHAIN_PID=$!
 until curl -s -o /dev/null "http://localhost:$APPCHAIN_PORT/" 2>/dev/null; do sleep 0.5; done
 
-# 5. saya-tee sidecar: proves appchain blocks, submits update_state to piltover
-#    on Sepolia. saya 0.4.0 must be the Poseidon-patched build (see saya-patch).
-echo "→ starting saya-tee --mock-prove sidecar (settling to Sepolia)…"
-RESET=1 "$SERVICES/saya.sh" > "$RUN_DIR/saya.log" 2>&1 &
-SAYA_PID=$!
+# 5. Settlement: handled by the appchain node's embedded settlement service
+#    (configured via the [settlement.runtime] section written above). It proves each
+#    appchain block (--tee mock) and submits update_state to piltover on Sepolia —
+#    no external saya-tee sidecar.
 
 # 6. Deploy the economy + worlds (GAME_TOKEN, score, game, TokenSale, Entry, grants).
 ( cd "$DEMO_DIR" && bun run scripts/deploy.ts )
@@ -211,8 +235,7 @@ until curl -s -o /dev/null "http://localhost:$TORII_GAME_HTTP/" 2>/dev/null; do 
 echo ""
 echo "✓ Demo is up:"
 echo "    settlement     : $SETTLEMENT_NAME ($SETTLEMENT_RPC_URL)"
-echo "    appchain RPC   : http://localhost:$APPCHAIN_PORT   explorer: http://localhost:$APPCHAIN_PORT/explorer"
-echo "    saya-tee       : running (.run/saya.log)"
+echo "    appchain RPC   : http://localhost:$APPCHAIN_PORT   explorer: http://localhost:$APPCHAIN_PORT/explorer  (embedded settlement)"
 echo "    torii (score)  : http://localhost:$TORII_SCORE_HTTP/sql   (.run/torii-score.log)"
 echo "    torii (game)   : http://localhost:$TORII_GAME_HTTP/sql    (.run/torii-game.log)"
 # Frontend is HTTPS by default (mkcert); set HTTP=1 to serve plain http.

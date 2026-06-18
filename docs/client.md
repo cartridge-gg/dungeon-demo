@@ -78,7 +78,7 @@ operation). Players extract many runs into the `game-Vault`, then bank once:
 
 1. **Withdraw (L2):** when `Vault.gold > 0`, the **Withdraw** button sends one message
    with the whole vault and emits a `game-Withdrawal { amount, withdraw_no }`.
-2. **Settle:** saya proves and settles the withdrawal's appchain block onto piltover.
+2. **Settle:** the appchain's embedded settlement service proves and settles the withdrawal's appchain block onto piltover.
 3. **Claim (L1):** the **Claim** button calls `bankMany`, banking *every settled*
    withdrawal in one multicall (each call consumes its message and mints GOLD).
 
@@ -88,7 +88,7 @@ withdrawal past the banked count is **unclaimed** (oldest-first). The **Claim** 
 enables once the oldest has settled (`settledBlock ≥` its block) and banks all that have
 settled at once; any not-yet-settled ones stay queued (an unsettled `consume` would
 revert the whole multicall). The Bank-tab badge shows the total bankable gold (amber
-while awaiting saya, green once a withdrawal is settled). See `readVault` /
+while awaiting settlement, green once a withdrawal is settled). See `readVault` /
 `getWithdrawals` / `getBankCount` in `chain.ts`.
 
 The unclaimed withdrawals render as a list under the buttons; clicking one opens a
@@ -141,6 +141,6 @@ the latest read.
 ---
 
 That's the loop: [architecture](./architecture.md) (two worlds, one local chain,
-the token economy) → [services](./services.md) (one Katana, piltover/saya/Torii on
+the token economy) → [services](./services.md) (one Katana, piltover/settlement/Torii on
 Sepolia) → [contracts](./contracts.md) (the dungeon + the messaging directions) →
 [deployment](./deployment.md) (deploy economy + worlds) → this read/write client.

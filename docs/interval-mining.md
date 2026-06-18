@@ -12,19 +12,19 @@ require.
 ## Why 5s blocks + a persistent db
 
 Default `--dev` mining seals a block **per transaction**, instantly. That's snappy,
-but it has two costs here: every click becomes its own appchain block that **saya
+but it has two costs here: every click becomes its own appchain block the appchain
 settles to Sepolia** (a settlement tx per action, in bursts), and the chain is
 **in-memory** — a restart wipes the game world and every run.
 
 - **`--block-time 5000`** mines on a steady 5s cadence and batches a window of
-  actions into one block, so saya settles at a predictable rate (and the "settled N
+  actions into one block, so settlement happens at a predictable rate (and the "settled N
   / tip M" gauge ticks naturally) instead of bursting a block per click.
 - **`--data-dir .run/appchain-db`** persists appchain state, so you can bounce the
   node — e.g. to change the block time — and keep the game world, runs, and vault.
   No redeploy. (Caveat: a *fresh* appchain db must pair with a *fresh* piltover, so
-  saya's start block lines up — that's what `FRESH=1 ./up.sh` does. Reusing an old
-  piltover under a fresh chain leaves saya waiting for a block height that no longer
-  exists. See [services.md](./services.md#saya--the-prover-now-settling-to-a-real-chain).)
+  the settlement service's start block lines up — that's what `FRESH=1 ./up.sh` does. Reusing an old
+  piltover under a fresh chain leaves the settlement service waiting for a block height that no longer
+  exists. See [services.md](./services.md#settlement--the-appchain-settles-itself).)
 
 ## The catch: `latest` lags `pre_confirmed`
 
@@ -108,4 +108,4 @@ with the four client/Torii adjustments above.
 ---
 
 Back to the [client](./client.md) read/write layer, or the [services](./services.md)
-that run the appchain, saya, and the toriis.
+that run the appchain and the toriis.

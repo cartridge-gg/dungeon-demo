@@ -57,14 +57,16 @@ game world before `entry` (which addresses it); the grants last.
 
 `up.sh` orchestrates it. The settlement steps run against **real Sepolia**:
 
-1. **Preflight** — `asdf install`, verify katana / patched saya / sozo·torii·scarb,
-   and that `.env` is filled.
+1. **Preflight** — `asdf install`, verify katana (embedded-settlement build) /
+   `saya-ops` / sozo·torii·scarb, and that `.env` is filled.
 2. **Mock TEE registry on Sepolia** (`saya-ops`, operator account).
 3. **piltover core + rollup config** via `katana init rollup --tee` against Sepolia
-   (saya account = piltover operator).
-4. **Base `deployments.json`** — Sepolia + appchain rpc/accounts, piltover, USDC.
-5. **Appchain Katana** (`:5070`, `--tee mock --messaging.enabled`).
-6. **saya-tee** (`--mock-prove`, settling to Sepolia).
+   (settlement account = piltover operator).
+4. **`[settlement.runtime]`** appended to the chain config — enables the appchain's
+   embedded settlement service (the settling account + key + TEE registry).
+5. **Base `deployments.json`** — Sepolia + appchain rpc/accounts, piltover, USDC.
+6. **Appchain Katana** (`:5070`, `--tee mock --messaging.enabled`) — settles to
+   piltover itself; no separate saya-tee sidecar.
 7. **Deploy economy + worlds** (`scripts/deploy.ts`).
 8. **Two Torii instances** — Sepolia `score` (`:8091`), appchain `game` (`:8092`).
 9. **Client** (Vite, `:3002`).
@@ -75,10 +77,11 @@ cp .env.example .env && ./up.sh     # Ctrl-C / ./down.sh tears down the local pr
 
 ## Costs & gotchas (real chain)
 
-- Every deploy + every `saya update_state` costs real Sepolia STRK. Fund the
-  operator generously and give **saya a dedicated account** (nonce contention with
-  the operator stalls settlement).
-- The **Poseidon saya patch** is required (see [contracts.md](./contracts.md#the-message-hash-gotcha)).
+- Every deploy + every `update_state` costs real Sepolia STRK. Fund the operator
+  generously and give the **settlement account a dedicated account** (nonce
+  contention with the operator stalls settlement).
+- No saya-tee / Poseidon patch needed — katana's embedded settlement computes the
+  Poseidon L1→L2 message hash itself (see [contracts.md](./contracts.md#the-message-hash-gotcha)).
 - `init rollup` against Sepolia needs the chain id (`SN_SEPOLIA`) and a funded
   account; a balance/chain-id mismatch fails the deploy.
 - **Blake2s compiled-class hash (Starknet ≥ 0.14.1).** Sepolia/mainnet compute the
@@ -100,6 +103,6 @@ curl "http://localhost:8091/sql?query=SELECT%20*%20FROM%20%22score-Leaderboard%2
 ```
 
 The real test is a full round trip: dev-mint → enter → a few actions → extract →
-wait for saya → bank. The [client chapter](./client.md) shows the calls.
+wait for settlement → bank. The [client chapter](./client.md) shows the calls.
 
 Next: [how the client queries and drives all this →](./client.md)

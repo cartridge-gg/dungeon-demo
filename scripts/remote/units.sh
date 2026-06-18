@@ -22,20 +22,20 @@ KATANA="${KATANA:-$HOME/katana/target/release/katana}"
 DEPLOY_USER="$(id -un)"
 SYSTEMD_DIR=/etc/systemd/system
 PFX=dungeon
-# Units get a minimal env; PATH covers torii/sozo/saya-tee (+ ~/.local, ~/.bun) and
-# KATANA is absolute. systemd does not expand ~ or $HOME, so spell them out.
+# Units get a minimal env; PATH covers torii/sozo (+ ~/.local, ~/.bun) and KATANA is
+# absolute. systemd does not expand ~ or $HOME, so spell them out.
 RUNTIME_PATH="$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin"
 
-# Start order matters: saya + the game torii need the appchain first.
-UNIT_NAMES=(appchain saya torii-bank torii-game)
+# Start order matters: the game torii needs the appchain first. The appchain unit
+# settles to piltover itself (embedded settlement) — there is no separate saya unit.
+UNIT_NAMES=(appchain torii-bank torii-game)
 
 usay() { echo "→ $*"; }
 
 # name|script|After-extra|Description  (one per backend service)
 _unit_table() {
   cat <<EOF
-appchain|appchain.sh||Dungeon appchain (katana rollup, settles to Sepolia)
-saya|saya.sh| ${PFX}-appchain.service|Dungeon saya-tee (proves + settles appchain → Sepolia)
+appchain|appchain.sh||Dungeon appchain (katana rollup, embedded settlement → Sepolia)
 torii-bank|torii-bank.sh||Dungeon torii — bank world (Starknet Sepolia)
 torii-game|torii-game.sh| ${PFX}-appchain.service|Dungeon torii — game world (appchain)
 EOF
@@ -99,7 +99,7 @@ UNIT
 
 units_start()  { local n; for n in "$@"; do sudo systemctl start "${PFX}-$n.service"; done; }
 units_enable() { local n u=(); for n in "${UNIT_NAMES[@]}"; do u+=("${PFX}-$n.service"); done; sudo systemctl enable "${u[@]}" >/dev/null; }
-units_status() { sudo systemctl --no-pager --output=short status "${PFX}-appchain" "${PFX}-saya" "${PFX}-torii-bank" "${PFX}-torii-game" 2>&1 || true; }
+units_status() { sudo systemctl --no-pager --output=short status "${PFX}-appchain" "${PFX}-torii-bank" "${PFX}-torii-game" 2>&1 || true; }
 
 # Install + start in dependency order (resuming on-disk state) + enable for boot.
 # For migrating an already-deployed stack — does NOT run deploy.ts.
@@ -107,7 +107,7 @@ units_up() {
   units_install
   usay "starting appchain…"; units_start appchain
   until curl -s -o /dev/null http://localhost:5070/ 2>/dev/null; do sleep 0.5; done
-  usay "starting saya + toriis…"; units_start saya torii-bank torii-game
+  usay "starting toriis…"; units_start torii-bank torii-game
   until curl -s -o /dev/null http://localhost:8092/ 2>/dev/null; do sleep 0.5; done
   usay "enabling units for boot…"; units_enable
   usay "done."; units_status
