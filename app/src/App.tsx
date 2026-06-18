@@ -947,8 +947,6 @@ export default function App() {
     chain
       .subscribeGameTorii(() => tickRef.current())
       .then((c) => {
-        // eslint-disable-next-line no-console
-        console.log("[torii] game-world subscription connected");
         if (cancelled) c();
         else cleanup = c;
       })
