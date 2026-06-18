@@ -1,0 +1,3 @@
+[submodule "vendor/controller"]
+	path = vendor/controller
+	url = https://github.com/cartridge-gg/controller-rs.git

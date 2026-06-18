@@ -218,6 +218,10 @@ until curl -s -o /dev/null "http://localhost:$APPCHAIN_PORT/" 2>/dev/null; do sl
 #     the appchain and its play actions fall back to the settlement chain. Declaring the
 #     on-disk artifact here lands the canonical hash so the Controller can sign appchain txs.
 echo "→ declaring Controller account class on the appchain (katana #584 workaround)…"
+#     The class artifacts live in the vendor/controller submodule (controller-rs);
+#     init it on demand so a fresh clone works without --recurse-submodules.
+[ -e "$DEMO_DIR/vendor/controller/account_sdk/artifacts/classes" ] \
+  || ( cd "$DEMO_DIR" && git submodule update --init vendor/controller )
 ( cd "$DEMO_DIR" && bun run scripts/declare-controller-class.ts )
 
 # 7. Torii indexers (bank world on Sepolia, game world on the appchain). RESET=1 wipes

@@ -48,6 +48,7 @@ This is *not* fully one-click — settling to a real chain needs real accounts.
 ## Run it
 
 ```bash
+git submodule update --init vendor/controller   # Controller account classes (controller-rs); up.sh also does this on demand
 cp .env.example .env     # fill in KATANA, SEPOLIA_RPC_URL, operator + settlement accounts, USDC
 ./up.sh                  # appchain :5070 (settles → Sepolia), torii ×2, frontend :3002
 ```

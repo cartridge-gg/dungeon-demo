@@ -56,13 +56,16 @@ prepare() {
   command -v bun    >/dev/null || fail "bun not found on PATH."
   [[ -x "$KATANA" ]] || fail "katana not found/executable: $KATANA (set KATANA=… to the rollup-capable build)."
 
-  # 1. Controller class artifacts (ship with katana). No monorepo parent here, so
-  #    point declare-controller-class.ts at an existing katana checkout. Override
-  #    with CONTROLLER_CLASSES_DIR; default to the server's katana checkout.
-  local default_classes="$HOME/katana/crates/contracts/contracts/controller/account_sdk/artifacts/classes"
+  # 1. Controller class artifacts ship in the vendor/controller submodule
+  #    (cartridge-gg/controller-rs). Init it so this checkout is self-contained;
+  #    declare-controller-class.ts then finds the classes without any external
+  #    katana checkout. CONTROLLER_CLASSES_DIR still overrides for out-of-tree use.
+  say "initializing vendor/controller submodule…"
+  ( cd "$DEMO_DIR" && git submodule update --init vendor/controller )
+  local default_classes="$DEMO_DIR/vendor/controller/account_sdk/artifacts/classes"
   CONTROLLER_CLASSES_DIR="${CONTROLLER_CLASSES_DIR:-$default_classes}"
   [[ -d "$CONTROLLER_CLASSES_DIR" ]] \
-    || fail "Controller classes dir not found: $CONTROLLER_CLASSES_DIR — set CONTROLLER_CLASSES_DIR to a katana checkout's account_sdk/artifacts/classes."
+    || fail "Controller classes dir not found: $CONTROLLER_CLASSES_DIR — run 'git submodule update --init vendor/controller' or set CONTROLLER_CLASSES_DIR."
   export CONTROLLER_CLASSES_DIR
   say "controller classes: $CONTROLLER_CLASSES_DIR"
 

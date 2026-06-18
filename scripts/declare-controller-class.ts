@@ -15,16 +15,14 @@ import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { account, DEMO_ROOT, loadDeployments, loadJson, provider, waitForRpc } from "./lib.ts";
 
-// The controller account artifacts embedded in katana (katana-slot-controller).
-// In the monorepo they sit two levels up from this example; a standalone/remote
-// checkout has no such parent, so CONTROLLER_CLASSES_DIR overrides the location
-// (the remote deploy points it at the server's katana checkout).
+// The controller account artifacts ship in the cartridge-gg/controller-rs repo,
+// vendored here as the `vendor/controller` git submodule (the same submodule
+// katana pulls in). Run `git submodule update --init vendor/controller` after
+// cloning. CONTROLLER_CLASSES_DIR overrides the location if you need to point at
+// an out-of-tree checkout.
 const CLASSES_DIR = process.env.CONTROLLER_CLASSES_DIR
   ? resolve(process.env.CONTROLLER_CLASSES_DIR)
-  : resolve(
-      DEMO_ROOT,
-      "../../crates/contracts/contracts/controller/account_sdk/artifacts/classes",
-    );
+  : resolve(DEMO_ROOT, "vendor/controller/account_sdk/artifacts/classes");
 
 async function main() {
   const { appchain } = loadDeployments();
