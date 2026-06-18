@@ -104,7 +104,17 @@ function toriiAddr(a: string): string {
 }
 
 async function toriiSql<T = Record<string, string | number>>(base: string, sql: string): Promise<T[]> {
-  const res = await fetch(`${base}/sql?query=${encodeURIComponent(sql)}`);
+  // Bound every torii read: a stalled fetch (e.g. a momentarily starved browser connection
+  // pool to a busy torii) would otherwise stay pending forever and wedge the poll loop.
+  // Abort after 8s so it rejects and the next tick can retry.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  let res: Response;
+  try {
+    res = await fetch(`${base}/sql?query=${encodeURIComponent(sql)}`, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     const body = await res.text();
     // Torii creates an event table lazily — only on the first event of that type. Until

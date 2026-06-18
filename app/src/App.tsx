@@ -734,6 +734,17 @@ function ConfigPanel() {
 export default function App() {
   const wallet = useWallet();
   const player = wallet.player;
+  // The Controller blips `player` to "" on every chain-switch (i.e. every action). The
+  // per-player Torii subscriptions must NOT tear down + reconnect on those transient blips:
+  // each reconnect spins up a fresh torii-wasm client whose gRPC streams hold connections,
+  // and that churn starves the bank torii's (:8091) HTTP connection pool until reads
+  // (getBankCount) stall and wedge the poll loop. Latch the last real player so the
+  // subscriptions only (re)connect on a genuine identity change, not a blip.
+  const [stablePlayer, setStablePlayer] = useState("");
+  useEffect(() => {
+    if (player) setStablePlayer(player);
+    else if (wallet.method === null) setStablePlayer(""); // genuine disconnect, not a blip
+  }, [player, wallet.method]);
 
   const [runState, setRunState] = useState<chain.RunState | null>(null); // last-loaded run state
   const [runs, setRuns] = useState<chain.RunState[]>([]); // the player's unfinished runs (lobby)
@@ -742,7 +753,7 @@ export default function App() {
   // treat it as the current run when it actually matches — otherwise the dungeon view would
   // briefly render the *previous* run's progress before the next poll replaces it.
   const run = runState && runState.runNo === selectedRun ? runState : null;
-  const enteringRef = useRef<number | null>(null); // total_runs at "New game" click; auto-selects the mint
+  const enteringRef = useRef<Set<number> | null>(null); // alive run_nos at "New game" click; auto-selects the mint
   const [stats, setStats] = useState<chain.Stats>({ totalRuns: 0, activeRuns: 0, totalActions: 0, totalBanked: 0 });
   const [feed, setFeed] = useState<chain.OutcomeRow[]>([]);
   const [board, setBoard] = useState<chain.LeaderRow[]>([]);
@@ -857,35 +868,52 @@ export default function App() {
       // player) skips them — and the bank-world Torii (see the subscription effect) —
       // so idle work and memory stay down.
       if (player) {
-        const [rl, r, gld, vt, wd, bc, le] = await Promise.all([
+        // These are all LOCAL reads (game/bank Torii on localhost). allSettled — NOT
+        // Promise.all — so one stalled/failed read (e.g. a momentarily starved torii
+        // connection) can't reject the whole batch and skip the entering-exit. A failed
+        // read keeps its last rendered value; listRuns drives the entering-exit on its own.
+        // goldBalance is deliberately NOT here: it hits Sepolia (the only remote read in
+        // the tick), and even fire-and-forget it stays off the awaited path.
+        const [rRl, rRun, rVt, rWd, rBc, rLe] = await Promise.allSettled([
           chain.listRuns(player),
           selectedRun != null ? chain.readRun(selectedRun) : Promise.resolve(null),
-          chain.goldBalance(player),
           chain.readVault(player),
           chain.getWithdrawals(player),
           chain.getBankCount(player),
           chain.getLastRunEnded(player),
         ]);
-        setRuns(rl);
-        setRunState(r);
-        // When the selected run ends (death or extract) we deliberately KEEP it
-        // selected so the outcome screen overlays the run page; the lobby transition
-        // happens only when that screen is closed. After "New game", auto-select the
-        // freshly minted run once it appears.
-        if (enteringRef.current != null) {
-          const fresh = rl.find((x) => x.runNo > enteringRef.current!);
-          if (fresh) {
-            setSelectedRun(fresh.runNo);
-            enteringRef.current = null;
+        if (rRl.status === "fulfilled") {
+          const rl = rRl.value;
+          setRuns(rl);
+          // When the selected run ends (death or extract) we deliberately KEEP it
+          // selected so the outcome screen overlays the run page; the lobby transition
+          // happens only when that screen is closed. After "New game", auto-select the
+          // freshly minted run once it appears. We detect it as the highest alive run
+          // that wasn't alive at click time — robust against a stale `stats.total_runs`
+          // (rl is DESC, so .find returns the newest mint).
+          if (enteringRef.current != null) {
+            const baseline = enteringRef.current;
+            const fresh = rl.find((x) => !baseline.has(x.runNo));
+            if (fresh) {
+              setSelectedRun(fresh.runNo);
+              enteringRef.current = null;
+            }
           }
         }
-        setGoldBal(gld);
-        setVault(vt);
+        if (rRun.status === "fulfilled") setRunState(rRun.value);
+        if (rVt.status === "fulfilled") setVault(rVt.value);
         // Everything past the banked count is unclaimed (oldest-first). The Claim
-        // button banks all of these that have settled, in one multicall.
-        setUnclaimed(wd.slice(bc));
-        setLastEnded(le);
-        if (baselineEndNoRef.current === null) baselineEndNoRef.current = le ? le.endNo : -1;
+        // button banks all of these that have settled, in one multicall. Only recompute
+        // when BOTH reads landed — a partial result would mis-slice.
+        if (rWd.status === "fulfilled" && rBc.status === "fulfilled") setUnclaimed(rWd.value.slice(rBc.value));
+        if (rLe.status === "fulfilled") {
+          const le = rLe.value;
+          setLastEnded(le);
+          if (baselineEndNoRef.current === null) baselineEndNoRef.current = le ? le.endNo : -1;
+        }
+        // GOLD balance is on Sepolia — fire-and-forget so a slow/hung balance read never
+        // blocks the local reads above. It updates the HUD whenever it resolves.
+        void chain.goldBalance(player).then((g) => setGoldBal(g)).catch(() => {});
       } else if (wallet.method === null) {
         // Truly disconnected (the starting page) — clear everything.
         setRuns([]);
@@ -985,7 +1013,7 @@ export default function App() {
   // Bank-world (Sepolia) live updates are per-player — only subscribe while a wallet is
   // connected, so the idle starting page runs a single torii-wasm client.
   useEffect(() => {
-    if (!player) return;
+    if (!stablePlayer) return;
     let cleanup: (() => void) | undefined;
     let cancelled = false;
     chain
@@ -1002,7 +1030,7 @@ export default function App() {
       cancelled = true;
       cleanup?.();
     };
-  }, [player]);
+  }, [stablePlayer]);
 
   // Re-read when the connected player, the selected run, or readiness changes.
   useEffect(() => {
@@ -1142,8 +1170,9 @@ export default function App() {
 
   // "New game": fire the free, self-funding L1 enter (dev-mint → approve → enter, all
   // in one multicall — see chain.enterDungeon), which sends the L1→L2 mint_run. Remember
-  // the run count at click time so the tick can auto-select the freshly minted run once
-  // it shows up on the appchain. Owns its own lifecycle (rather than `act`) because the
+  // which runs are alive at click time so the tick can auto-select the freshly minted run
+  // (the new alive run not in that set) once it shows up on the appchain. Owns its own
+  // lifecycle (rather than `act`) because the
   // loader is gated on `enteringRef`, which must be cleared if the L1 tx fails — else
   // the lobby stays stuck behind the loader with no way to retry.
   const onNewGame = async () => {
@@ -1151,7 +1180,7 @@ export default function App() {
       void wallet.connectController(); // no picker — the Controller IS the login
       return;
     }
-    enteringRef.current = stats ? stats.totalRuns : 0;
+    enteringRef.current = new Set(runs.map((r) => r.runNo));
     setBusyL1("enter");
     setErr(null);
     try {
