@@ -14,7 +14,7 @@
 #
 # Requires a funded Sepolia operator + saya account and a USDC address — see
 # .env.example (copy to .env). These deploys cost real Sepolia gas. Also requires
-# a katana built from the embedded-settlement branch (set KATANA — see .env.example).
+# katana >= 1.8.0-rc.4 (embedded settlement), pinned in .tool-versions (asdf).
 #
 # Ctrl-C tears down the appchain node and the toriis.
 set -euo pipefail
@@ -65,14 +65,13 @@ else
   echo "  warning: asdf not found — install it, or put sozo/torii/scarb on PATH (see .tool-versions)." >&2
 fi
 
-# katana — must be the embedded-settlement build (it settles itself; no saya-tee).
-# Honor a pre-set $KATANA (point it at the branch's target/debug/katana — see
-# .env.example); else release > debug > PATH. Mirrors scripts/services/_common.sh.
-if   [[ -n "${KATANA:-}" && -x "${KATANA:-}" ]];   then :
-elif [[ -x "$REPO_ROOT/target/release/katana" ]]; then KATANA="$REPO_ROOT/target/release/katana"
-elif [[ -x "$REPO_ROOT/target/debug/katana"   ]]; then KATANA="$REPO_ROOT/target/debug/katana"
-elif command -v katana >/dev/null 2>&1;            then KATANA="$(command -v katana)"
-else fail "katana binary not found. Set KATANA to your embedded-settlement build (see .env.example), or build katana and put it on PATH."; fi
+# katana — the appchain node, which settles to piltover itself (embedded settlement
+# service; no saya-tee sidecar). Needs katana >= 1.8.0-rc.4, pinned in .tool-versions
+# (asdf) like sozo/torii/scarb. Honor a pre-set $KATANA to override (e.g. a local build);
+# else take it from PATH. Mirrors scripts/services/_common.sh.
+if   [[ -n "${KATANA:-}" && -x "${KATANA:-}" ]]; then :
+elif command -v katana >/dev/null 2>&1;          then KATANA="$(command -v katana)"
+else fail "katana not found. Run 'asdf install' in this directory (pinned in .tool-versions), or set KATANA to a katana >= 1.8.0-rc.4 binary."; fi
 
 # saya-ops — used once to deploy the mock TEE registry (a bootstrap helper, not the
 # settlement sidecar). Settlement is now done by katana's embedded service, so

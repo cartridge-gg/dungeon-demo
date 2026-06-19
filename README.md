@@ -32,14 +32,15 @@ with a token economy layered on top of an external contract (USDC).
 
 This is *not* fully one-click — settling to a real chain needs real accounts.
 
-1. A **katana** built from the embedded-settlement branch — the appchain node
-   settles to piltover itself (no saya-tee sidecar). Point `KATANA` at it in `.env`
-   (or put it on PATH).
+1. **katana ≥ 1.8.0-rc.4** — the appchain node settles to piltover itself via its
+   embedded settlement service (no saya-tee sidecar). Pinned in `.tool-versions` and
+   installed by `asdf install`, so normally it just lands on PATH; set `KATANA` in
+   `.env` only to override with a local build.
 2. **`saya-ops` v0.4.0** on PATH — used once to deploy the mock TEE registry. The
    `saya-tee` sidecar and its Poseidon message-hash patch are no longer needed
    (katana computes the Poseidon hash itself).
-3. **Dojo toolchain** (`sozo`/`torii`/`scarb`) via `asdf install` (pinned in
-   `.tool-versions`). The cairo worlds pull **Dojo from the Scarb registry**
+3. **Dojo toolchain** (`katana`/`sozo`/`torii`/`scarb`) via `asdf install` (all pinned
+   in `.tool-versions`). The cairo worlds pull **Dojo from the Scarb registry**
    (`dojo = "1.8.0"`), so no separate dojo checkout is needed.
 4. **Bun**.
 5. A funded Sepolia **operator** account and a separate funded **settlement** account,

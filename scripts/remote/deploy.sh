@@ -19,9 +19,9 @@
 # any running stack alone — use it to validate the standalone build.
 #
 # Env knobs (all optional):
-#   KATANA                katana binary (default: $HOME/katana/target/release/katana
-#                         — the build whose `init rollup --settlement-chain` takes an
-#                         RPC URL; the system katana on PATH may be too old)
+#   KATANA                katana binary (default: $HOME/katana/target/release/katana).
+#                         Needs katana >= 1.8.0-rc.4 (embedded settlement); point this
+#                         at an asdf/release binary or a source build.
 #   CONTROLLER_CLASSES_DIR  Controller artifact dir (default: $HOME/katana/...)
 #   PREPARE_ONLY          1 = stop after the standalone build
 set -euo pipefail
@@ -33,9 +33,9 @@ RUN_DIR="$DEMO_DIR/.run"
 
 TEE_REGISTRY_SALT="0x7ee"
 
-# The rollup tooling needs the katana build whose `init rollup --settlement-chain`
-# takes an RPC URL (the system PATH katana may predate that). _common.sh and the
-# systemd units honor this KATANA.
+# katana >= 1.8.0-rc.4 (embedded settlement; `init rollup --settlement-chain` takes an
+# RPC URL). Defaults to a source build; set KATANA to an asdf/release binary to use the
+# published release instead. _common.sh and the systemd units honor this KATANA.
 KATANA="${KATANA:-$HOME/katana/target/release/katana}"
 export KATANA
 

@@ -42,13 +42,12 @@ case "$SETTLEMENT_NETWORK" in
 esac
 [[ -n "${SETTLEMENT_RPC_URL:-}" ]] || svc_fail "set SETTLEMENT_RPC_URL (or SEPOLIA_RPC_URL) in .env."
 
-# katana binary: honor a pre-set $KATANA (e.g. the remote deploy points at the
-# server's built binary), else release > debug > PATH.
-if   [[ -n "${KATANA:-}" && -x "${KATANA:-}" ]];   then :
-elif [[ -x "$REPO_ROOT/target/release/katana" ]]; then KATANA="$REPO_ROOT/target/release/katana"
-elif [[ -x "$REPO_ROOT/target/debug/katana"   ]]; then KATANA="$REPO_ROOT/target/debug/katana"
-elif command -v katana >/dev/null 2>&1;            then KATANA="$(command -v katana)"
-else svc_fail "katana binary not found — build it: ( cd \"$REPO_ROOT\" && cargo build --release )"; fi
+# katana binary: katana >= 1.8.0-rc.4 (embedded settlement), pinned in .tool-versions
+# (asdf) like sozo/torii/scarb. Honor a pre-set $KATANA to override (e.g. a local build,
+# or the remote deploy pointing at the server's binary); else take it from PATH.
+if   [[ -n "${KATANA:-}" && -x "${KATANA:-}" ]]; then :
+elif command -v katana >/dev/null 2>&1;          then KATANA="$(command -v katana)"
+else svc_fail "katana not found — run 'asdf install' here (pinned in .tool-versions), or set KATANA to a katana >= 1.8.0-rc.4 binary."; fi
 
 # Appchain paymaster/session middleware + Controller auto-deploy — always on.
 CONTROLLER_FLAGS="--paymaster --cartridge.paymaster --cartridge.controllers"
