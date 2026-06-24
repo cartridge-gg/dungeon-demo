@@ -81,8 +81,9 @@ Two consequences of settling to a real chain:
   Poseidon L1→L2 hash patch is **no longer needed** — katana computes the Poseidon
   message hash itself, so entries settle without the keccak/Poseidon mismatch.
 
-The **mock TEE registry** (the on-L1 attestation verifier) is still deployed on
-Sepolia, by `saya-ops`, before `init rollup`.
+The **mock TEE registry** (the on-L1 attestation verifier) lives on Sepolia already,
+so `init rollup` just reuses its address (`TEE_REGISTRY_ADDRESS`) — no `saya-ops`
+deploy step.
 
 ## Torii — the indexers (one per chain)
 

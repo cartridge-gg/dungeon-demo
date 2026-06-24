@@ -31,7 +31,9 @@ DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICES="$DEMO_DIR/scripts/services"
 RUN_DIR="$DEMO_DIR/.run"
 
-TEE_REGISTRY_SALT="0x7ee"
+# The mock TEE registry is already deployed on Sepolia (deterministic salt 0x7ee), so
+# we reuse it instead of redeploying via saya-ops. Override for a different network.
+TEE_REGISTRY_ADDRESS="${TEE_REGISTRY_ADDRESS:-0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15}"
 
 # katana >= 1.8.0-rc.4 (embedded settlement; `init rollup --settlement-chain` takes an
 # RPC URL). Defaults to a source build; set KATANA to an asdf/release binary to use the
@@ -109,24 +111,17 @@ teardown() {
   done
 }
 
-# ── FRESH bootstrap: mock TEE registry + piltover core + rollup config on Sepolia ─
+# ── FRESH bootstrap: piltover core + rollup config on Sepolia (reuse TEE registry) ─
 bootstrap() {
   mkdir -p "$RUN_DIR"
   # FRESH: wipe the indexer/prover state so the new chain re-indexes from scratch.
   # (The units run the service scripts WITHOUT RESET, so they resume on restart; the
   # one-time FRESH wipe happens here instead.)
   rm -rf "$RUN_DIR/saya-db" "$RUN_DIR/torii-score.db" "$RUN_DIR/torii-game.db"
-  say "deploying mock TEE registry on $SETTLEMENT_NAME (saya-ops)…"
-  local reg_out tee_registry
-  reg_out=$(SETTLEMENT_RPC_URL="$SETTLEMENT_RPC_URL" \
-    SETTLEMENT_ACCOUNT_ADDRESS="$OPERATOR_ADDRESS" \
-    SETTLEMENT_ACCOUNT_PRIVATE_KEY="$OPERATOR_PRIVATE_KEY" \
-    SETTLEMENT_CHAIN_ID="$SETTLEMENT_CHAIN_ID" \
-    saya-ops core-contract declare-and-deploy-tee-registry-mock --salt "$TEE_REGISTRY_SALT" 2>&1)
-  tee_registry=$(echo "$reg_out" | sed -nE 's/.*TEE registry mock address:[[:space:]]*(0x[0-9a-fA-F]+).*/\1/p' | tail -1)
-  [[ -n "$tee_registry" ]] || { echo "$reg_out" >&2; fail "could not parse TEE registry address."; }
+  # Reuse the mock TEE registry already deployed on Sepolia (no saya-ops).
+  local tee_registry="$TEE_REGISTRY_ADDRESS"
   echo "$tee_registry" > "$RUN_DIR/tee_registry"
-  say "  tee_registry=$tee_registry"
+  say "reusing mock TEE registry on $SETTLEMENT_NAME: $tee_registry"
 
   say "deploying piltover core + rollup config (katana init rollup --tee)…"
   rm -rf "$CHAIN_DIR" "$APPCHAIN_DB"

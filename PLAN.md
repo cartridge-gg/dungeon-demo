@@ -298,8 +298,8 @@ is a deliberate demo simplification (the dev key can act on any run); document i
 |------|-------------|--------|
 | 0.1 | Scaffold `examples/cross-chain-dungeon/` mirroring the first example (`cairo/`, `scripts/`, `app/`, `docs/`, `up.sh`, `down.sh`, `.tool-versions`, `.gitignore`). | Directory skeleton |
 | 0.2 | Define config/env: `SEPOLIA_RPC_URL`, `OPERATOR_ADDRESS`/`OPERATOR_PRIVKEY`, `SAYA_ADDRESS`/`SAYA_PRIVKEY` (or shared), `USDC_ADDRESS` (real Circle Sepolia — **verify canonical address**, see Open Questions), `RATE`, `ENTRY_FEE`, `REWARD_RATE`. Gitignored `.env.example`. | `config.ts` + `.env.example` |
-| 0.3 | Resolve/verify the saya Poseidon patch and the `saya-tee`/`saya-ops` binaries work against a **remote Sepolia** RPC (not just localhost). | Verified prover tooling |
-| 0.4 | Deploy the **mock TEE registry** on Sepolia (`saya-ops`, operator account). | `tee_registry` address |
+| 0.3 | Resolve/verify settlement tooling works against a **remote Sepolia** RPC (not just localhost). *(Superseded: katana's embedded settlement service replaced the `saya-tee`/`saya-ops` sidecars and computes the Poseidon hash itself.)* | Verified settlement tooling |
+| 0.4 | Reuse the **mock TEE registry** already deployed on Sepolia (`TEE_REGISTRY_ADDRESS`); no `saya-ops` deploy. | `tee_registry` address |
 | 0.5 | `katana init rollup --tee` targeting **Sepolia** (settlement provider = Sepolia RPC + operator key, fact registry = mock TEE registry) → deploys **piltover** on Sepolia, writes the appchain chain config. | `piltover` address + chain config |
 | 0.6 | Wire the Dojo dependency (path or git tag at the sozo-matching commit) for all worlds. | Buildable `Scarb.toml`s |
 | 0.7 | Write base `deployments.json` (Sepolia RPC, appchain RPC, accounts, piltover, USDC, Torii urls). | `deployments.json` seed |
@@ -349,7 +349,7 @@ is a deliberate demo simplification (the dev key can act on any run); document i
 | Task | Description | Output |
 |------|-------------|--------|
 | D.1 | `scripts/deploy.ts` + `scripts/lib.ts`: deploy `GameToken`→`TokenSale`→`score` world, migrate appchain `game` world (init `registry`=score system), then `Entry` (needs appchain game system + piltover); grant GAME minter to `TokenSale` + `score` claim; record all addresses. | deploy script |
-| D.2 | `up.sh`: preflight → mock TEE registry (Sepolia) → `init rollup --tee` (Sepolia) → base `deployments.json` → appchain Katana (`:5070`, `--tee mock --dev --dev.no-fee --messaging.enabled`) → saya-tee (`--mock-prove`, settlement = Sepolia) → migrate (D.1) → Torii ×2 (Sepolia score `:8091`, appchain game `:8092`) → client (`:3002`). Ports per the distinct band above (no local settlement node). | `up.sh` |
+| D.2 | `up.sh`: preflight → reuse mock TEE registry (Sepolia) → `init rollup --tee` (Sepolia) → base `deployments.json` → appchain Katana (`:5070`, `--tee mock --dev --dev.no-fee --messaging.enabled`, embedded settlement → Sepolia) → migrate (D.1) → Torii ×2 (Sepolia score `:8091`, appchain game `:8092`) → client (`:3002`). Ports per the distinct band above (no local settlement node). | `up.sh` |
 | D.3 | `down.sh` + run dir/log hygiene; clear messaging on the appchain not needed (fresh chain each run). | `down.sh` |
 
 ---
