@@ -6,20 +6,23 @@
 // bundles. The only difference is the service endpoints: the browser can't reach the
 // server's loopback-bound katana/torii, so it goes through the public reverse proxy.
 //
-// Settlement RPC + explorer are already public (taken straight from the manifest);
-// the appchain RPC/explorer/torii and the settlement torii are rewritten to the
-// PUBLIC backend (nginx vhost paths: /rpc, /rpc/explorer, /torii/game, /torii/score).
+// Settlement RPC + explorer are already public (taken straight from the manifest).
+// The toriis are app-specific and go to the app <backendUrl>. The appchain RPC/explorer
+// — now a SHARED deployment — can live on a separate host via the optional <appchainUrl>
+// arg (defaults to <backendUrl>). nginx vhost paths: /rpc, /rpc/explorer on the appchain
+// host; /torii/game, /torii/score on the app backend.
 //
-// Usage: node scripts/gen-client-deployments.mjs <manifest.json> <backendUrl> <out.json>
+// Usage: node scripts/gen-client-deployments.mjs <manifest.json> <backendUrl> <out.json> [appchainUrl]
 import { readFileSync, writeFileSync } from "node:fs";
 
-const [manifestPath, backendUrl, outPath] = process.argv.slice(2);
+const [manifestPath, backendUrl, outPath, appchainUrlArg] = process.argv.slice(2);
 if (!manifestPath || !backendUrl || !outPath) {
-  console.error("usage: gen-client-deployments.mjs <manifest.json> <backendUrl> <out.json>");
+  console.error("usage: gen-client-deployments.mjs <manifest.json> <backendUrl> <out.json> [appchainUrl]");
   process.exit(2);
 }
 
-const backend = backendUrl.replace(/\/+$/, ""); // no trailing slash
+const backend = backendUrl.replace(/\/+$/, ""); // no trailing slash (app backend: toriis)
+const appchainBackend = (appchainUrlArg || backendUrl).replace(/\/+$/, ""); // appchain RPC host (may differ)
 const m = JSON.parse(readFileSync(manifestPath, "utf-8"));
 const s = m.settlement, a = m.appchain;
 
@@ -42,8 +45,8 @@ const client = {
     entry: s.entry,
   },
   appchain: {
-    rpcUrl: `${backend}/rpc`,
-    explorer: `${backend}/rpc/explorer`,
+    rpcUrl: `${appchainBackend}/rpc`,
+    explorer: `${appchainBackend}/rpc/explorer`,
     torii: `${backend}/torii/game`,
     gameWorld: a.gameWorld,
     gameSystem: a.gameSystem,

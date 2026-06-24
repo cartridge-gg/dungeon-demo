@@ -127,7 +127,7 @@ else
   # from a previous genesis (a persisted db must match the chain it was initialized from).
   rm -rf "$CHAIN_DIR" "$APPCHAIN_DB"
   "$KATANA" init rollup \
-    --id DUNGEON \
+    --id CARTRIDGE_TESTNET \
     --settlement-chain "$SETTLEMENT_RPC_URL" \
     --settlement-account-address "$SAYA_ADDRESS" \
     --settlement-account-private-key "$SAYA_PRIVATE_KEY" \

@@ -92,6 +92,8 @@ jobs:
           # Public reverse-proxy base for the loopback-bound services (nginx vhost
           # on the server). Override with a repo variable if the domain changes.
           PUBLIC_BACKEND_URL: ${{ vars.PUBLIC_BACKEND_URL || 'https://dungeon-backend.cartridge.gg' }}
+          # Appchain RPC host (shared deployment) — separate from the app backend/toriis.
+          PUBLIC_APPCHAIN_URL: ${{ vars.PUBLIC_APPCHAIN_URL || 'https://sepolia-appchain.cartridge.gg' }}
         run: |
           # Pull the sanitized manifest dir off the server (no private keys — see
           # the manifest() step in scripts/remote/deploy.sh) into this checkout.
@@ -99,7 +101,7 @@ jobs:
           # Regenerate the client config (deployments.json) the Vite app bundles:
           # fresh addresses from the manifest + the public backend URLs.
           network=$(ssh target "node -e 'console.log(require(process.env.HOME + \"/$DEPLOY_DIR/deployments.json\").settlement.network)'")
-          node scripts/gen-client-deployments.mjs "deployments/$network.json" "$PUBLIC_BACKEND_URL" deployments.json
+          node scripts/gen-client-deployments.mjs "deployments/$network.json" "$PUBLIC_BACKEND_URL" deployments.json "$PUBLIC_APPCHAIN_URL"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add deployments deployments.json

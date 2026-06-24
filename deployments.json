@@ -5,18 +5,18 @@
     "rpcUrl": "https://api.cartridge.gg/x/starknet/sepolia/rpc/v0_9",
     "explorer": "https://sepolia.voyager.online",
     "torii": "https://dungeon-backend.cartridge.gg/torii/score",
-    "piltover": "0x59aaaac2871e2da8a26fcbd13cf055299857a678e3e112026908456851e2d2",
+    "piltover": "0x4dc5dea5c8b22a298d6a1f91a0dd3687c2cdf13149f773812ace1f3ac6baf30",
     "usdc": "0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343",
-    "gameToken": "0x61c9b1baca9069d971e24809922343c2fd6700cd36959e431da5958d14e1a06",
-    "goldToken": "0x4fed2f601c3966248ebc7d813e1c915f61a885969d316e5c4b723d22684ae1",
-    "bankWorld": "0x5860f18b31d235f40aa30b9cc83933c68f0b80c61dddd2a58d191ffa9d83acd",
-    "bankSystem": "0x7c5919a8d6dcd1059d64f0cae901bfceee547bbf3c526710f12627b946091b7",
-    "tokenSale": "0x55a2590fe581cadc848f5623d6747dde7988fd1b49c38e81f91eb497eb1ee55",
-    "entry": "0x127ea0bab3d2e5a389fbd71b2a2f243abf82aab8e2c593a73c85f96be932cdd"
+    "gameToken": "0x48ea38627cda858ab37277b1b236ff00ead235f60a6ea42ec4d00fe2fc14fd8",
+    "goldToken": "0x13d51f19cc118ffb8a68f59b7e31900e7909d6d11ee197b28b5baf63d077077",
+    "bankWorld": "0xf4518e2a91b78caf361ab1dbf5c9276c1400644304aa32a2b4e4179a77867c",
+    "bankSystem": "0x393fb235f4ec2396dd79268ce24adc52d94c47d13bae67e7f8cf3ed89819c20",
+    "tokenSale": "0x21675ca6794932e5e2faec5fc814bd37f7890ddb6a24e5186d43547f749548f",
+    "entry": "0x72344a18e676f782448b4dcde87635de94bf8864532745954ab07802ded9dd3"
   },
   "appchain": {
-    "rpcUrl": "https://dungeon-backend.cartridge.gg/rpc",
-    "explorer": "https://dungeon-backend.cartridge.gg/rpc/explorer",
+    "rpcUrl": "https://sepolia-appchain.cartridge.gg/rpc",
+    "explorer": "https://sepolia-appchain.cartridge.gg/rpc/explorer",
     "torii": "https://dungeon-backend.cartridge.gg/torii/game",
     "gameWorld": "0x7f6c1c800301783a1a5a9378a6c3cdf237ad9ae21bb715c0bf5e408a450ab6e",
     "gameSystem": "0x6d3d2eab82c4b17ee17eeae58f9981db04a8e9beeaa887b355ce7e57f085e97"

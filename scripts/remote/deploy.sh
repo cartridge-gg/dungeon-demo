@@ -128,7 +128,7 @@ bootstrap() {
   say "deploying piltover core + rollup config (katana init rollup --tee)…"
   rm -rf "$CHAIN_DIR" "$APPCHAIN_DB"
   "$KATANA" init rollup \
-    --id DUNGEON \
+    --id CARTRIDGE_TESTNET \
     --settlement-chain "$SETTLEMENT_RPC_URL" \
     --settlement-account-address "$SAYA_ADDRESS" \
     --settlement-account-private-key "$SAYA_PRIVATE_KEY" \
