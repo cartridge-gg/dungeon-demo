@@ -963,18 +963,34 @@ export default function App() {
     };
   }, []);
 
-  // Fast run-state poll. The game-world gRPC subscription only fires on SEALED blocks,
-  // so with `--block-time` the active run's screen lags ~5s — even though Torii indexes
-  // the pre-confirmed block and has the new RunState within ~1s of an action. Poll just
-  // that one LOCAL read (`readRun` → game-world Torii) every 400ms so a move's depth/hp/
-  // gold update immediately. The 5s tick still covers the Sepolia-touching reads
-  // (balances, vault, withdrawals), which must NOT be polled this fast.
+  // Adaptive fast run-state poll. The game-world gRPC subscription only fires on SEALED
+  // blocks, so with `--block-time` the active run's screen would lag ~5s — even though
+  // Torii indexes the pre-confirmed block and has the new RunState within ~1s. Rather than
+  // poll forever (5 q/s the whole time a run is open, even idle), we BURST: each action
+  // (and each run switch) arms a ~6s window during which we poll `readRun` every 200ms so
+  // the move's depth/hp/gold lands immediately; once the window elapses we go silent and
+  // let the gRPC subscription + the 5s tick cover idle (nothing changes RunState while
+  // you're not acting). The 5s tick still owns the Sepolia reads (balances, vault, withdrawals).
+  const fastUntil = useRef(0); // wall-clock deadline; while Date.now() < it, poll fast
+  const [poke, setPoke] = useState(0); // bumped to (re)arm the burst
+  const kickFastPoll = useCallback(() => {
+    fastUntil.current = Date.now() + 6000; // ~6s: covers a ~2s move and a ~5s death/extract outcome
+    setPoke((p) => p + 1);
+  }, []);
+  // Arm a burst whenever a run is selected/switched, so its state shows promptly.
+  useEffect(() => {
+    if (selectedRun != null) kickFastPoll();
+  }, [selectedRun, kickFastPoll]);
+
   const fastOutcomeRef = useRef<number | null>(null); // runNo whose outcome we've pulled
   useEffect(() => {
     if (!DEPLOYED || !player || selectedRun == null) return;
+    if (Date.now() >= fastUntil.current) return; // outside a burst → no loop, no queries
     let cancelled = false;
     fastOutcomeRef.current = null;
-    const h = setInterval(async () => {
+    let timer: ReturnType<typeof setTimeout>;
+    const tickFast = async () => {
+      if (cancelled) return;
       try {
         const r = await chain.readRun(selectedRun);
         if (cancelled || !r) return;
@@ -1001,12 +1017,15 @@ export default function App() {
       } catch {
         // transient — the 5s tick is the backstop
       }
-    }, 200);
+      // Re-arm only while inside the burst window; otherwise stop (idle → no queries).
+      if (!cancelled && Date.now() < fastUntil.current) timer = setTimeout(tickFast, 200);
+    };
+    void tickFast();
     return () => {
       cancelled = true;
-      clearInterval(h);
+      clearTimeout(timer);
     };
-  }, [player, selectedRun]);
+  }, [player, selectedRun, poke]);
 
   // Bank-world (Sepolia) live updates are per-player — only subscribe while a wallet is
   // connected, so the idle starting page runs a single torii-wasm client.
@@ -1069,7 +1088,10 @@ export default function App() {
   const actL1 = (name: string, fn: (acc: chain.Signer) => Promise<unknown>) =>
     act("l1", name, () => (wallet.l1Account ? fn(wallet.l1Account) : (void wallet.connectController(), Promise.resolve())));
   const actL2 = (name: string, fn: (acc: chain.Signer) => Promise<unknown>) =>
-    act("l2", name, () => (wallet.l2Account ? fn(wallet.l2Account) : (void wallet.connectController(), Promise.resolve())));
+    act("l2", name, () => {
+      kickFastPoll(); // burst the run-state poll so the action's result shows fast
+      return wallet.l2Account ? fn(wallet.l2Account) : (void wallet.connectController(), Promise.resolve());
+    });
 
   const playing = selectedRun != null;
   const inCombat = !!run && run.enemyHp > 0;
