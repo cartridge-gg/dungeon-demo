@@ -4,7 +4,7 @@
 #
 #   Starknet Sepolia (remote)
 #     + piltover core         (deployed by `katana init rollup --tee`)
-#     + mock TEE registry     (deployed by `saya-ops`)
+#     + mock TEE registry     (already deployed — reused, see TEE_REGISTRY_ADDRESS)
 #     + GAME_TOKEN / TokenSale / Entry / score world  (deployed by scripts/deploy.ts)
 #   appchain Katana (:5070, rollup, --tee mock) settling to piltover on Sepolia,
 #     with its embedded settlement service (the [settlement.runtime] section)
@@ -32,7 +32,11 @@ APPCHAIN_PORT=5070
 TORII_SCORE_HTTP=8091; TORII_SCORE_GRPC=50091; TORII_SCORE_RELAY=9191
 TORII_GAME_HTTP=8092;  TORII_GAME_GRPC=50092;  TORII_GAME_RELAY=9194
 FRONTEND_PORT=3002
-TEE_REGISTRY_SALT="0x7ee"
+
+# The mock TEE registry is already deployed on Sepolia (deterministic salt 0x7ee), so
+# we reuse it instead of redeploying via saya-ops. Override TEE_REGISTRY_ADDRESS in
+# .env for a different network (e.g. a mainnet registry).
+TEE_REGISTRY_ADDRESS="${TEE_REGISTRY_ADDRESS:-0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15}"
 
 fail() { echo "error: $1" >&2; exit 1; }
 
@@ -73,10 +77,9 @@ if   [[ -n "${KATANA:-}" && -x "${KATANA:-}" ]]; then :
 elif command -v katana >/dev/null 2>&1;          then KATANA="$(command -v katana)"
 else fail "katana not found. Run 'asdf install' in this directory (pinned in .tool-versions), or set KATANA to a katana >= 1.8.0-rc.4 binary."; fi
 
-# saya-ops — used once to deploy the mock TEE registry (a bootstrap helper, not the
-# settlement sidecar). Settlement is now done by katana's embedded service, so
-# saya-tee and its Poseidon-hash patch are no longer needed.
-command -v saya-ops >/dev/null 2>&1 || fail "'saya-ops' not found on PATH. Install saya v0.4.0."
+# The mock TEE registry is already deployed on Sepolia and reused (TEE_REGISTRY_ADDRESS),
+# so saya-ops is no longer needed. Settlement is done by katana's embedded service, so
+# saya-tee and its Poseidon-hash patch are gone too.
 for bin in sozo torii scarb; do
   command -v "$bin" >/dev/null 2>&1 || fail "'$bin' not found on PATH. Run 'asdf install' in this directory (see .tool-versions)."
 done
@@ -109,24 +112,16 @@ echo "→ installing JS dependencies…"
 ( cd "$DEMO_DIR" && bun install >/dev/null )
 ( cd "$DEMO_DIR/app" && bun install >/dev/null )
 
-# 1+2. Mock TEE registry + piltover core on Sepolia — both gas-costing real
-#      deploys. Skip them if a previous run already bootstrapped this chain dir
-#      (set FRESH=1 to force a fresh bootstrap). saya is the piltover operator
-#      (the only update_state caller) and must differ from the operator account.
-if [[ -z "${FRESH:-}" && -f "$CHAIN_DIR/config.toml" && -f "$RUN_DIR/tee_registry" ]]; then
+# 1. Piltover core on Sepolia — a gas-costing real deploy. The mock TEE registry is
+#    reused (already on Sepolia), not redeployed. Skip the bootstrap if a previous run
+#    already wrote this chain dir (set FRESH=1 to force a fresh bootstrap). saya is the
+#    piltover operator (the only update_state caller) and must differ from the operator.
+TEE_REGISTRY="$TEE_REGISTRY_ADDRESS"
+echo "$TEE_REGISTRY" > "$RUN_DIR/tee_registry"   # for _common.sh / metadata readers
+if [[ -z "${FRESH:-}" && -f "$CHAIN_DIR/config.toml" ]]; then
   echo "→ reusing existing Sepolia bootstrap (set FRESH=1 to redeploy)…"
-  TEE_REGISTRY=$(cat "$RUN_DIR/tee_registry")
 else
-  echo "→ deploying mock TEE registry on $SETTLEMENT_NAME (saya-ops)…"
-  REG_OUT=$(SETTLEMENT_RPC_URL="$SETTLEMENT_RPC_URL" \
-    SETTLEMENT_ACCOUNT_ADDRESS="$OPERATOR_ADDRESS" \
-    SETTLEMENT_ACCOUNT_PRIVATE_KEY="$OPERATOR_PRIVATE_KEY" \
-    SETTLEMENT_CHAIN_ID="$SETTLEMENT_CHAIN_ID" \
-    saya-ops core-contract declare-and-deploy-tee-registry-mock --salt "$TEE_REGISTRY_SALT" 2>&1)
-  TEE_REGISTRY=$(echo "$REG_OUT" | sed -nE 's/.*TEE registry mock address:[[:space:]]*(0x[0-9a-fA-F]+).*/\1/p' | tail -1)
-  [[ -n "$TEE_REGISTRY" ]] || { echo "error: could not parse TEE registry address:" >&2; echo "$REG_OUT" >&2; exit 1; }
-  echo "$TEE_REGISTRY" > "$RUN_DIR/tee_registry"
-
+  echo "→ reusing mock TEE registry on $SETTLEMENT_NAME: $TEE_REGISTRY"
   echo "→ deploying piltover core + generating rollup config (katana init rollup --tee)…"
   # Fresh chain config ⇒ fresh genesis, so drop any stale appchain db that was built
   # from a previous genesis (a persisted db must match the chain it was initialized from).

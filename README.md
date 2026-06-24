@@ -36,8 +36,9 @@ This is *not* fully one-click — settling to a real chain needs real accounts.
    embedded settlement service (no saya-tee sidecar). Pinned in `.tool-versions` and
    installed by `asdf install`, so normally it just lands on PATH; set `KATANA` in
    `.env` only to override with a local build.
-2. **`saya-ops` v0.4.0** on PATH — used once to deploy the mock TEE registry. The
-   `saya-tee` sidecar and its Poseidon message-hash patch are no longer needed
+2. **Mock TEE registry** — already deployed on Sepolia and reused (no `saya-ops`
+   needed); override with `TEE_REGISTRY_ADDRESS` in `.env` for another network. The
+   `saya-tee` sidecar and its Poseidon message-hash patch are no longer needed either
    (katana computes the Poseidon hash itself).
 3. **Dojo toolchain** (`katana`/`sozo`/`torii`/`scarb`) via `asdf install` (all pinned
    in `.tool-versions`). The cairo worlds pull **Dojo from the Scarb registry**
@@ -54,8 +55,8 @@ cp .env.example .env     # fill in KATANA, SEPOLIA_RPC_URL, operator + settlemen
 ./up.sh                  # appchain :5070 (settles → Sepolia), torii ×2, frontend :3002
 ```
 
-`up.sh` deploys the mock TEE registry + piltover core on Sepolia, starts the
-appchain (whose embedded settlement service settles to piltover itself), deploys the
+`up.sh` deploys the piltover core on Sepolia (reusing the already-deployed mock TEE
+registry), starts the appchain (whose embedded settlement service settles to piltover itself), deploys the
 economy + worlds (`scripts/deploy.ts`), starts both Torii indexers, and serves the
 client. `./down.sh` stops the local processes.
 
@@ -68,8 +69,8 @@ then on the **Bank** tab withdraw the vault to Sepolia to mint **GOLD**.
 
 Every deploy and every `update_state` is a **real Sepolia transaction**:
 
-- The **operator** pays for the TEE registry, piltover, the GAME/GOLD/sale/entry
-  contracts, and the bank-world migration.
+- The **operator** pays for piltover, the GAME/GOLD/sale/entry contracts, and the
+  bank-world migration (the mock TEE registry is reused, not redeployed).
 - The **settlement account** pays for `update_state` on every settled batch
   (recurring) — the appchain's embedded settlement service submits these. Give it a
   **dedicated** funded account, never shared with the operator (nonce contention

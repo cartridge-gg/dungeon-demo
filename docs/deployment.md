@@ -58,8 +58,9 @@ game world before `entry` (which addresses it); the grants last.
 `up.sh` orchestrates it. The settlement steps run against **real Sepolia**:
 
 1. **Preflight** — `asdf install`, verify katana (≥ 1.8.0-rc.4) /
-   `saya-ops` / sozo·torii·scarb, and that `.env` is filled.
-2. **Mock TEE registry on Sepolia** (`saya-ops`, operator account).
+   sozo·torii·scarb, and that `.env` is filled.
+2. **Mock TEE registry** — reused from its existing Sepolia deployment
+   (`TEE_REGISTRY_ADDRESS`); no `saya-ops` deploy.
 3. **piltover core + rollup config** via `katana init rollup --tee` against Sepolia
    (settlement account = piltover operator).
 4. **`[settlement.runtime]`** appended to the chain config — enables the appchain's
