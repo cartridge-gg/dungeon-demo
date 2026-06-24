@@ -106,4 +106,34 @@ curl "http://localhost:8091/sql?query=SELECT%20*%20FROM%20%22score-Leaderboard%2
 The real test is a full round trip: dev-mint → enter → a few actions → extract →
 wait for settlement → bank. The [client chapter](./client.md) shows the calls.
 
+## Managing the running stack (remote / systemd)
+
+On a server the long-lived services (appchain + the two toriis) run under systemd, one
+unit each (`dungeon-appchain`, `dungeon-torii-bank`, `dungeon-torii-game`), supervised
+by `scripts/remote/units.sh` (`Restart=always`, enabled on boot). Day-to-day ops go
+through that script — it's the single source of truth:
+
+```bash
+# on the server:
+bash scripts/remote/units.sh status [svc]          # systemctl status (all three if no svc)
+bash scripts/remote/units.sh logs [svc] [-f]       # journalctl, one service or all
+bash scripts/remote/units.sh restart appchain      # bounce one service
+bash scripts/remote/units.sh reset torii-game      # wipe its db + re-index from the world block
+```
+
+`reset` is for the **toriis** (drift behind on a flaky RPC → re-index, no gas). There's
+no cheap `reset appchain`: that's a fresh genesis + contract redeploy — `FRESH=1 bash
+scripts/remote/deploy.sh`. katana also writes rotated file logs to `.run/logs`
+(`--log.file`), in addition to journald.
+
+Drive all of this from your laptop without SSHing in by hand with
+`scripts/remote/dungeonctl` (pure SSH transport to the same `units.sh` verbs):
+
+```bash
+export DUNGEON_HOST=user@server                    # DUNGEON_DIR defaults to ~/dungeon-deploy/dungeon-demo
+scripts/remote/dungeonctl logs -f                  # follow all services from here
+scripts/remote/dungeonctl reset torii-bank
+scripts/remote/dungeonctl restart appchain
+```
+
 Next: [how the client queries and drives all this →](./client.md)

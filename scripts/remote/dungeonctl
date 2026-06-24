@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# dungeonctl — drive the REMOTE dungeon stack's systemd from your laptop over SSH.
+#
+# This is the ONE script here that runs on your laptop (macOS/Linux), not on the
+# server. It's pure transport: every verb forwards to scripts/remote/units.sh (or
+# journalctl) ON the box, so the server stays the single source of truth. The remote
+# stack is supervised by systemd (see scripts/remote/units.sh).
+#
+# Config (export, or source a small env file before running):
+#   DUNGEON_HOST   user@server          (required)
+#   DUNGEON_DIR    repo path on server  (default: $HOME/dungeon-deploy/dungeon-demo,
+#                                        expanded server-side — matches CI's DEPLOY_DIR)
+#   SSH_OPTS       extra ssh flags      (optional, word-split)
+#
+# Examples:
+#   export DUNGEON_HOST=you@server
+#   dungeonctl status
+#   dungeonctl logs -f                 # all services, follow
+#   dungeonctl logs torii-game -f
+#   dungeonctl restart appchain
+#   dungeonctl reset torii-bank        # wipe + re-index the Sepolia indexer
+#   dungeonctl up                      # install + start + enable (no gas; no deploy.ts)
+#   dungeonctl shell                   # interactive shell on the box, in the repo dir
+set -euo pipefail
+
+HOST="${DUNGEON_HOST:?set DUNGEON_HOST=user@server}"
+DIR="${DUNGEON_DIR:-\$HOME/dungeon-deploy/dungeon-demo}"  # \$HOME stays literal → expanded server-side
+UNITS="bash scripts/remote/units.sh"
+
+# One multiplexed SSH connection for a burst of commands — one auth/handshake.
+# shellcheck disable=SC2206  # SSH_OPTS is meant to word-split into extra ssh flags.
+SSH=(ssh -o ControlMaster=auto -o ControlPath="$HOME/.ssh/cm-dungeon-%r@%h:%p" \
+         -o ControlPersist=60 ${SSH_OPTS:-} "$HOST")
+
+rexec()     { "${SSH[@]}"    -- "cd $DIR && $*"; }   # non-interactive
+rexec_tty() { "${SSH[@]}" -t -- "cd $DIR && $*"; }   # tty: needed for sudo prompts + logs -f
+
+usage() {
+  cat >&2 <<EOF
+usage: dungeonctl <cmd> [args]   (services: appchain | torii-bank | torii-game)
+  status [svc]              systemctl status (all three if omitted)
+  logs [svc] [-f]           journalctl (all services if svc omitted; -f to follow)
+  start|stop|restart <svc>  per-service lifecycle
+  reset <torii-svc>         wipe the indexer's db + re-index (NOT appchain)
+  up | stop-all | install | remove-all | enable    forward to units.sh
+  exec <cmd…>               run a command in the repo dir on the server
+  shell                     interactive shell on the server, in the repo dir
+
+Config: DUNGEON_HOST=user@server (required), DUNGEON_DIR (default ~/dungeon-deploy/dungeon-demo)
+EOF
+  exit 2
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  status)
+    rexec "$UNITS status $*" ;;
+  logs)
+    # logs may follow (-f) → needs a tty; a plain dump doesn't.
+    if [[ " $* " == *" -f "* ]]; then rexec_tty "$UNITS logs $*"; else rexec "$UNITS logs $*"; fi ;;
+  start|stop|restart|reset)
+    [[ $# -ge 1 ]] || usage
+    rexec_tty "$UNITS $cmd $*" ;;            # sudo prompt → tty
+  up|stop-all|install|remove-all|enable)
+    rexec_tty "$UNITS $cmd $*" ;;            # sudo prompt → tty
+  exec)
+    [[ $# -ge 1 ]] || usage
+    rexec_tty "$*" ;;
+  shell)
+    "${SSH[@]}" -t -- "cd $DIR && exec \"\$SHELL\" -l" ;;
+  ""|-h|--help)
+    usage ;;
+  *)
+    echo "dungeonctl: unknown command '$cmd'" >&2; usage ;;
+esac

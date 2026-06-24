@@ -5,10 +5,14 @@
 # public client is GitHub Pages.
 #
 # Sourced by scripts/remote/deploy.sh (uses the units_* functions), and also runnable
-# standalone to migrate an ALREADY-DEPLOYED stack onto systemd with no redeploy/gas:
+# standalone to migrate an ALREADY-DEPLOYED stack onto systemd with no redeploy/gas,
+# and for day-to-day ops (per-service restart/reset, log viewing):
 #
-#   bash scripts/remote/units.sh up          # install units + start (resume) + enable
-#   bash scripts/remote/units.sh remove-all  # stop, disable, delete the unit files
+#   bash scripts/remote/units.sh up               # install units + start (resume) + enable
+#   bash scripts/remote/units.sh restart appchain # bounce one service
+#   bash scripts/remote/units.sh reset torii-game # wipe its db + re-index
+#   bash scripts/remote/units.sh logs -f          # follow all services' journals
+#   bash scripts/remote/units.sh remove-all       # stop, disable, delete the unit files
 #   bash scripts/remote/units.sh status
 #
 # deploy.ts is deliberately NOT a unit: a unit would re-run it (re-spending gas) on
@@ -31,6 +35,23 @@ RUNTIME_PATH="$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin"
 UNIT_NAMES=(appchain torii-bank torii-game)
 
 usay() { echo "→ $*"; }
+
+# Validate a service short-name (appchain | torii-bank | torii-game).
+_is_service() {
+  local n
+  for n in "${UNIT_NAMES[@]}"; do [[ "$n" == "$1" ]] && return 0; done
+  echo "error: unknown service '$1' (expected: ${UNIT_NAMES[*]})" >&2; return 1
+}
+
+# The on-disk db dir a torii indexer re-indexes into (see scripts/services/torii-*.sh).
+# Note the bank indexer's db is torii-score.db, NOT torii-bank.db.
+_db_dir() {
+  case "$1" in
+    torii-bank) echo "$RUN_DIR/torii-score.db" ;;
+    torii-game) echo "$RUN_DIR/torii-game.db" ;;
+    *) return 1 ;;
+  esac
+}
 
 # name|script|After-extra|Description  (one per backend service)
 _unit_table() {
@@ -97,9 +118,59 @@ UNIT
   sudo systemctl daemon-reload
 }
 
-units_start()  { local n; for n in "$@"; do sudo systemctl start "${PFX}-$n.service"; done; }
-units_enable() { local n u=(); for n in "${UNIT_NAMES[@]}"; do u+=("${PFX}-$n.service"); done; sudo systemctl enable "${u[@]}" >/dev/null; }
-units_status() { sudo systemctl --no-pager --output=short status "${PFX}-appchain" "${PFX}-torii-bank" "${PFX}-torii-game" 2>&1 || true; }
+units_start()   { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl start   "${PFX}-$n.service"; done; }
+units_stop()    { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl stop    "${PFX}-$n.service"; done; }
+units_restart() { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl restart "${PFX}-$n.service"; done; }
+units_enable()  { local n u=(); for n in "${UNIT_NAMES[@]}"; do u+=("${PFX}-$n.service"); done; sudo systemctl enable "${u[@]}" >/dev/null; }
+
+# status [name…] — given names, just those; no args → all three (callers rely on this).
+units_status() {
+  local u=()
+  if [[ $# -gt 0 ]]; then
+    local n; for n in "$@"; do _is_service "$n" || return 1; u+=("${PFX}-$n"); done
+  else
+    u=("${PFX}-appchain" "${PFX}-torii-bank" "${PFX}-torii-game")
+  fi
+  sudo systemctl --no-pager --output=short status "${u[@]}" 2>&1 || true
+}
+
+# reset <name> — wipe a torii's db and let it re-index from the world's deploy block.
+# The unit's ExecStart re-runs the torii script with no RESET, which recreates the db.
+# `systemctl stop` is synchronous, so the wipe can't race the running indexer. The
+# appchain has no cheap reset — that's a fresh genesis + contract redeploy (real gas).
+units_reset() {
+  local n="${1:-}"
+  [[ -n "$n" ]] || { echo "usage: units.sh reset <torii-bank|torii-game>" >&2; return 2; }
+  _is_service "$n" || return 1
+  if [[ "$n" == "appchain" ]]; then
+    echo "error: resetting the appchain means a fresh genesis + contract redeploy (real" >&2
+    echo "       Sepolia gas). That's a deploy, not an ops action — run:" >&2
+    echo "         FRESH=1 bash scripts/remote/deploy.sh" >&2
+    return 2
+  fi
+  local db; db="$(_db_dir "$n")" || { echo "error: no db mapping for '$n'" >&2; return 1; }
+  usay "resetting $n (wipe $db + re-index)…"
+  sudo systemctl stop "${PFX}-$n.service"
+  rm -rf "$db"
+  sudo systemctl start "${PFX}-$n.service"
+  usay "  $n restarted — re-indexing; follow with: journalctl -u ${PFX}-$n -f"
+}
+
+# logs [name] [-f] [-n N] — journalctl for one service, or all (-u 'dungeon-*'). No
+# sudo: the deploy user reads its own units' journal (deploy.sh's health check too).
+units_logs() {
+  local sel=(-u "${PFX}-*") rest=()   # quoted pattern → journalctl globs it, not the shell
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -f|--follow) rest+=(-f) ;;
+      -n) rest+=(-n "${2:-}"); shift ;;
+      -*) rest+=("$1") ;;
+      *) _is_service "$1" || return 1; sel=(-u "${PFX}-$1") ;;
+    esac
+    shift
+  done
+  journalctl "${sel[@]}" --no-pager "${rest[@]}"
+}
 
 # Install + start in dependency order (resuming on-disk state) + enable for boot.
 # For migrating an already-deployed stack — does NOT run deploy.ts.
@@ -118,11 +189,25 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   case "${1:-}" in
     install)    units_install ;;
     start)      shift; units_start "$@" ;;
+    stop)       shift; units_stop "$@" ;;
+    restart)    shift; units_restart "$@" ;;
+    reset)      shift; units_reset "$@" ;;
+    logs)       shift; units_logs "$@" ;;
     enable)     units_enable ;;
     stop-all)   units_stop_all ;;
     remove-all) units_remove_all ;;
     up)         units_up ;;
-    status)     units_status ;;
-    *) echo "usage: units.sh {install|start <name…>|enable|stop-all|remove-all|up|status}" >&2; exit 2 ;;
+    status)     shift; units_status "$@" ;;
+    *) cat >&2 <<'USAGE'; exit 2 ;;
+usage: units.sh <cmd> [args]   (services: appchain | torii-bank | torii-game)
+  up                       install + start (resume) + enable for boot
+  install                  (re)write the unit files
+  start|stop|restart <name…>   per-service lifecycle
+  reset <torii-name>       wipe the indexer's db + re-index (NOT appchain)
+  logs [name] [-f] [-n N]  journalctl for one service, or all
+  status [name…]           systemctl status (all three if no name)
+  stop-all | remove-all    stop+disable (and delete) every dungeon unit
+  enable                   enable all units for boot
+USAGE
   esac
 fi
