@@ -62,9 +62,11 @@ prepare() {
   #    (cartridge-gg/controller-rs). Init it so this checkout is self-contained;
   #    declare-controller-class.ts then finds the classes without any external
   #    katana checkout. CONTROLLER_CLASSES_DIR still overrides for out-of-tree use.
-  say "initializing vendor/controller submodule…"
-  ( cd "$DEMO_DIR" && git submodule update --init vendor/controller )
+  # Init on demand so a fresh git clone is self-contained; skip when the classes are
+  # already present (e.g. an rsync deploy with no .git), matching up.sh's guard.
   local default_classes="$DEMO_DIR/vendor/controller/account_sdk/artifacts/classes"
+  [ -e "$default_classes" ] \
+    || { say "initializing vendor/controller submodule…"; ( cd "$DEMO_DIR" && git submodule update --init vendor/controller ); }
   CONTROLLER_CLASSES_DIR="${CONTROLLER_CLASSES_DIR:-$default_classes}"
   [[ -d "$CONTROLLER_CLASSES_DIR" ]] \
     || fail "Controller classes dir not found: $CONTROLLER_CLASSES_DIR — run 'git submodule update --init vendor/controller' or set CONTROLLER_CLASSES_DIR."
@@ -209,8 +211,12 @@ health() {
   check "torii bank :$TORII_SCORE_HTTP" "http://localhost:$TORII_SCORE_HTTP/"
   check "torii game :$TORII_GAME_HTTP" "http://localhost:$TORII_GAME_HTTP/"
   # Settlement runs inside the appchain node now (the embedded service has no HTTP
-  # endpoint) — assert it started from the appchain unit's journal.
-  if journalctl -u "${PFX}-appchain" --no-pager 2>/dev/null | grep -q "Settlement service started"; then
+  # endpoint) — assert it from the appchain unit's journal. Bound the scan with --since
+  # (an unbounded journalctl can take minutes on a large/crash-looped journal and
+  # falsely report "not started"), and match the settlement module
+  # `katana_settlement::service`, which logs continuously ("Settled block range") rather
+  # than relying on the single startup line that may be far back in the journal.
+  if journalctl -u "${PFX}-appchain" --since "-5min" --no-pager 2>/dev/null | grep -qE "katana_settlement::service|Settlement service started"; then
     say "  ✓ embedded settlement"
   else
     say "  ✗ embedded settlement not started (journalctl -u ${PFX}-appchain)"; ok=0
