@@ -9,11 +9,10 @@ cross-chain loop.
 
 ## Chapters
 
-1. **[Architecture](./architecture.md)** — the worlds, the one-appchain /
+1. **[Architecture](./architecture.md)** — the worlds, the external-appchain /
    real-Sepolia split, the USDC → GAME_TOKEN economy, and the read/write paths.
-2. **[Services](./services.md)** — the appchain Katana (with its embedded settlement
-   service, `--tee mock`, settling to a real chain), piltover on Sepolia, and the
-   two Torii indexers.
+2. **[Services](./services.md)** — the external appchain (run by cartridge-appchain),
+   piltover on Sepolia, and the two Torii indexers this repo runs.
 3. **[Contracts](./contracts.md)** — the dungeon world, the token contracts, both
    messaging directions, and the death-is-local / extract-commits design.
 4. **[Deployment](./deployment.md)** — toolchain, deploy order (token + worlds +

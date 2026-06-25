@@ -3,7 +3,7 @@
 [← client](./client.md) · [guide index](./README.md)
 
 The demo signs with a single **Cartridge Controller** — buy / enter / bank on **real
-Sepolia** *and* the dungeon play actions on the **local appchain** — at one address.
+Sepolia** *and* the dungeon play actions on the **external appchain** — at one address.
 It's the only login: the Login button prompts the Controller connect directly.
 
 ## How it works
@@ -11,8 +11,8 @@ It's the only login: the Login button prompts the Controller connect directly.
 `app/src/wallet.tsx` gives the `ControllerConnector` both chains and exposes two
 signers — `l1Account` (Sepolia) and `l2Account` (appchain). Each wraps the raw
 `controller.account` and **switches the keychain's chain** around the call: `l2Account`
-switches to `shortString("DUNGEON")`, executes the play action, then switches back to
-Sepolia for the next L1 op. The **player** is the Controller address (same on both
+switches to `shortString("CARTRIDGE_TESTNET")`, executes the play action, then switches
+back to Sepolia for the next L1 op. The **player** is the Controller address (same on both
 chains), so a run entered on Sepolia is played and banked by that same Controller.
 Details in [client.md](./client.md#wallets-controller-only).
 
@@ -25,15 +25,16 @@ your **real Cartridge Controller account**, already deployed by Cartridge. Just:
 ./up.sh
 ```
 
-`up.sh` always appends `--paymaster --cartridge.paymaster --cartridge.controllers` to
-the **appchain** node (the settlement side is real Sepolia — Cartridge knows it
-natively, so only the appchain needs the middleware) and **declares the Controller
-account classes on the appchain** (`scripts/declare-controller-class.ts`, *all* bundled
+The **external appchain** (cartridge-appchain) runs Katana with
+`--paymaster --cartridge.paymaster --cartridge.controllers`, so it's Controller-capable
+out of the box (the settlement side is real Sepolia — Cartridge knows it natively, so
+only the appchain needs the middleware). `up.sh` then **declares the Controller account
+classes on the appchain** (`scripts/declare-controller-class.ts`, *all* bundled
 versions — an account is pinned to the class version it was created with, and the
-keychain deploys it at that version on a new chain). On a current katana the classes
+keychain deploys it at that version on a new chain). On a current appchain the classes
 are already in the rollup genesis at their canonical hashes and this declare is a
-harmless no-op; on older binaries it's what lets the Controller auto-deploy on first
-play. The frontend serves HTTPS (`mkcert`), required for the passkey login.
+harmless no-op; otherwise it's what lets the Controller auto-deploy on first play. The
+frontend serves HTTPS (`mkcert`), required for the passkey login.
 
 Open `https://localhost:3002`, **Login → Connect Controller** (your cartridge.gg
 account), then play: enter (Sepolia) → play (appchain) → withdraw → bank (Sepolia), all

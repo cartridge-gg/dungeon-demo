@@ -78,7 +78,7 @@ operation). Players extract many runs into the `game-Vault`, then bank once:
 
 1. **Withdraw (L2):** when `Vault.gold > 0`, the **Withdraw** button sends one message
    with the whole vault and emits a `game-Withdrawal { amount, withdraw_no }`.
-2. **Settle:** the appchain's embedded settlement service proves and settles the withdrawal's appchain block onto piltover.
+2. **Settle:** the external appchain (cartridge-appchain) proves and settles the withdrawal's appchain block onto piltover.
 3. **Claim (L1):** the **Claim** button calls `bankMany`, banking *every settled*
    withdrawal in one multicall (each call consumes its message and mints GOLD).
 
@@ -111,7 +111,7 @@ as one identity. The committed `deployments.json` carries **no account keys** �
 bank on Sepolia) and `l2Account` (the play actions on the appchain). Each wraps the
 raw `controller.account` and **switches the keychain's chain** around the call:
 `l1Account` switches to Sepolia first (a prior play may have left it on the
-appchain); `l2Account` switches to the appchain (`shortString("DUNGEON")`), executes,
+appchain); `l2Account` switches to the appchain (`shortString("CARTRIDGE_TESTNET")`), executes,
 then switches back to Sepolia. We use `controller.account`, not starknet-react's
 account (which is pinned to the Sepolia RPC and would estimate appchain fees against
 Sepolia). Session policies cover the Sepolia entrypoints **and** the game-system play
@@ -123,9 +123,9 @@ runs it entered. The play actions take an optional `account` in `chain.ts`
 (`moveRoom(runNo, account?)` …); with the Controller it's `l2Account`, otherwise the
 dev account keeps its pre-confirmed nonce/estimate fast path.
 
-The appchain leg is Controller-capable out of the box (`./up.sh` always enables the
-paymaster + Controller classes on the appchain) and needs only a Cartridge Controller
-login — the **hosted keychain** (x.cartridge.gg) by
+The appchain leg is Controller-capable out of the box (the external appchain runs the
+paymaster + Controller middleware; `./up.sh` declares the Controller classes on it) and
+needs only a Cartridge Controller login — the **hosted keychain** (x.cartridge.gg) by
 default, or a self-hosted keychain as a fully-local fallback. Full setup, including
 funding the Controller on real Sepolia, is in [controller.md](./controller.md).
 
@@ -140,7 +140,8 @@ the latest read.
 
 ---
 
-That's the loop: [architecture](./architecture.md) (two worlds, one local chain,
-the token economy) → [services](./services.md) (one Katana, piltover/settlement/Torii on
-Sepolia) → [contracts](./contracts.md) (the dungeon + the messaging directions) →
-[deployment](./deployment.md) (deploy economy + worlds) → this read/write client.
+That's the loop: [architecture](./architecture.md) (two worlds, an external appchain +
+real Sepolia, the token economy) → [services](./services.md) (the external appchain,
+piltover/settlement on Sepolia, our two Toriis) → [contracts](./contracts.md) (the
+dungeon + the messaging directions) → [deployment](./deployment.md) (deploy economy +
+worlds) → this read/write client.

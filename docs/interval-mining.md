@@ -2,29 +2,28 @@
 
 [← client](./client.md) · [guide index](./README.md)
 
-The appchain mines on a **5-second interval** (`--block-time 5000`) and **persists
-its state to disk** (`--data-dir`). Both are deliberate, and both change the timing
-model in a way that would break an interactive UI — unless the client and Torii read
-and write against the **pre-confirmed** block instead of the last mined one. This
-chapter is the why behind those flags and the four pre-confirmed adjustments they
-require.
+The external appchain (cartridge-appchain) mines on a **5-second interval**
+(`--block-time 5000`) and **persists its state to disk**. Both are deliberate, and both
+change the timing model in a way that would break an interactive UI — unless the client
+and our game Torii read and write against the **pre-confirmed** block instead of the
+last mined one. This chapter is the why behind that cadence and the four pre-confirmed
+adjustments it requires of *us*, the consumer. (We don't set those flags — they're the
+appchain's; see cartridge-appchain.)
 
 ## Why 5s blocks + a persistent db
 
 Default `--dev` mining seals a block **per transaction**, instantly. That's snappy,
-but it has two costs here: every click becomes its own appchain block the appchain
-settles to Sepolia** (a settlement tx per action, in bursts), and the chain is
-**in-memory** — a restart wipes the game world and every run.
+but it has two costs: every click becomes its own appchain block the appchain settles
+to Sepolia (a settlement tx per action, in bursts), and an in-memory chain loses the
+game world and every run on restart.
 
 - **`--block-time 5000`** mines on a steady 5s cadence and batches a window of
   actions into one block, so settlement happens at a predictable rate (and the "settled N
   / tip M" gauge ticks naturally) instead of bursting a block per click.
-- **`--data-dir .run/appchain-db`** persists appchain state, so you can bounce the
-  node — e.g. to change the block time — and keep the game world, runs, and vault.
-  No redeploy. (Caveat: a *fresh* appchain db must pair with a *fresh* piltover, so
-  the settlement service's start block lines up — that's what `FRESH=1 ./up.sh` does. Reusing an old
-  piltover under a fresh chain leaves the settlement service waiting for a block height that no longer
-  exists. See [services.md](./services.md#settlement--the-appchain-settles-itself).)
+- **A persistent data dir** keeps the appchain's game world, runs, and vault across
+  restarts — no redeploy. (Both of these are configured by cartridge-appchain, not
+  here; this repo just deploys the game world onto whatever appchain `APPCHAIN_RPC_URL`
+  points at.)
 
 ## The catch: `latest` lags `pre_confirmed`
 
@@ -108,4 +107,4 @@ with the four client/Torii adjustments above.
 ---
 
 Back to the [client](./client.md) read/write layer, or the [services](./services.md)
-that run the appchain and the toriis.
+(the external appchain and the toriis we run).

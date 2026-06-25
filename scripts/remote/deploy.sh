@@ -9,20 +9,22 @@
 #             artifacts, install JS deps, and build the cairo packages (Dojo comes
 #             from the Scarb registry, so no checkout to wire up). Idempotent;
 #             touches nothing that's running.
-#   bring-up  tear down any running stack, FRESH-bootstrap piltover + the rollup,
-#             deploy the economy + worlds (real Sepolia gas), start the backend
-#             services under systemd (system units, Restart=always, enabled for
-#             boot), and health-check them (a failed check fails the deploy before
-#             the manifest is recorded). DESTRUCTIVE — kills the live demo.
+#   bring-up  tear down any running stack, deploy the economy + worlds against the
+#             EXTERNAL appchain (real Sepolia gas for the settlement-side contracts),
+#             start the backend toriis under systemd (system units, Restart=always,
+#             enabled for boot), and health-check them (a failed check fails the
+#             deploy before the manifest is recorded). DESTRUCTIVE — kills the live
+#             toriis (the appchain is external and left untouched).
+#
+# The appchain is NOT deployed or operated here — it's owned by
+# cartridge-gg/cartridge-appchain. This consumes its RPC (APPCHAIN_RPC_URL) and its
+# piltover core (PILTOVER_ADDRESS), supplied via .env.
 #
 # PREPARE_ONLY=1 stops after `prepare` (cairo build), spending no gas and leaving
 # any running stack alone — use it to validate the standalone build.
 #
 # Env knobs (all optional):
-#   KATANA                katana binary (default: $HOME/katana/target/release/katana).
-#                         Needs katana >= 1.8.0-rc.4 (embedded settlement); point this
-#                         at an asdf/release binary or a source build.
-#   CONTROLLER_CLASSES_DIR  Controller artifact dir (default: $HOME/katana/...)
+#   CONTROLLER_CLASSES_DIR  Controller artifact dir (default: vendor/controller submodule)
 #   PREPARE_ONLY          1 = stop after the standalone build
 set -euo pipefail
 
@@ -30,16 +32,6 @@ set -euo pipefail
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICES="$DEMO_DIR/scripts/services"
 RUN_DIR="$DEMO_DIR/.run"
-
-# The mock TEE registry is already deployed on Sepolia (deterministic salt 0x7ee), so
-# we reuse it instead of redeploying via saya-ops. Override for a different network.
-TEE_REGISTRY_ADDRESS="${TEE_REGISTRY_ADDRESS:-0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15}"
-
-# katana >= 1.8.0-rc.4 (embedded settlement; `init rollup --settlement-chain` takes an
-# RPC URL). Defaults to a source build; set KATANA to an asdf/release binary to use the
-# published release instead. _common.sh and the systemd units honor this KATANA.
-KATANA="${KATANA:-$HOME/katana/target/release/katana}"
-export KATANA
 
 # Match the PATH the server's other launchers use (bun + scarb live under ~).
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:$PATH"
@@ -56,7 +48,7 @@ prepare() {
   command -v scarb  >/dev/null || fail "scarb not found on PATH (need 2.13.1)."
   command -v sozo   >/dev/null || fail "sozo not found on PATH (need 1.8.7)."
   command -v bun    >/dev/null || fail "bun not found on PATH."
-  [[ -x "$KATANA" ]] || fail "katana not found/executable: $KATANA (set KATANA=… to the rollup-capable build)."
+  # No katana here — the appchain is external (cartridge-appchain).
 
   # 1. Controller class artifacts ship in the vendor/controller submodule
   #    (cartridge-gg/controller-rs). Init it so this checkout is self-contained;
@@ -88,7 +80,7 @@ prepare() {
   say "standalone build OK."
 }
 
-# ── env / settlement derivation + katana binary (shared with the launchers) ─────
+# ── env + settlement derivation (shared with the launchers) ─────────────────────
 load_common() {
   [[ -f "$DEMO_DIR/.env" ]] || fail "no .env in $DEMO_DIR — the workflow installs it from the DEPLOY_ENV secret."
   # shellcheck disable=SC1091
@@ -106,80 +98,66 @@ teardown() {
     say "  killing tmux session $s"
     tmux kill-session -t "$s" 2>/dev/null || true
   done
-  for p in "$APPCHAIN_PORT" \
-           "$TORII_SCORE_HTTP" "$TORII_SCORE_GRPC" "$TORII_SCORE_RELAY" $((TORII_SCORE_RELAY+1)) $((TORII_SCORE_RELAY+2)) \
+  for p in "$TORII_SCORE_HTTP" "$TORII_SCORE_GRPC" "$TORII_SCORE_RELAY" $((TORII_SCORE_RELAY+1)) $((TORII_SCORE_RELAY+2)) \
            "$TORII_GAME_HTTP"  "$TORII_GAME_GRPC"  "$TORII_GAME_RELAY"  $((TORII_GAME_RELAY+1))  $((TORII_GAME_RELAY+2)); do
     free_port "$p"
   done
 }
 
-# ── FRESH bootstrap: piltover core + rollup config on Sepolia (reuse TEE registry) ─
-bootstrap() {
+# ── base deployments.json from .env (settlement + EXTERNAL appchain) ─────────────
+# No bootstrap: the appchain (piltover core, dev account, chain config) is owned by
+# cartridge-appchain. We just record its RPC + piltover from .env so scripts/deploy.ts
+# can deploy the economy/worlds against it. FRESH wipes the torii dbs so the toriis
+# re-index from scratch (the units run the service scripts WITHOUT RESET, resuming on
+# restart; the one-time FRESH wipe happens here instead).
+write_deployments() {
   mkdir -p "$RUN_DIR"
-  # FRESH: wipe the indexer/prover state so the new chain re-indexes from scratch.
-  # (The units run the service scripts WITHOUT RESET, so they resume on restart; the
-  # one-time FRESH wipe happens here instead.)
-  rm -rf "$RUN_DIR/saya-db" "$RUN_DIR/torii-score.db" "$RUN_DIR/torii-game.db"
-  # Reuse the mock TEE registry already deployed on Sepolia (no saya-ops).
-  local tee_registry="$TEE_REGISTRY_ADDRESS"
-  echo "$tee_registry" > "$RUN_DIR/tee_registry"
-  say "reusing mock TEE registry on $SETTLEMENT_NAME: $tee_registry"
+  rm -rf "$RUN_DIR/torii-score.db" "$RUN_DIR/torii-game.db"
 
-  say "deploying piltover core + rollup config (katana init rollup --tee)…"
-  rm -rf "$CHAIN_DIR" "$APPCHAIN_DB"
-  "$KATANA" init rollup \
-    --id CARTRIDGE_TESTNET \
-    --settlement-chain "$SETTLEMENT_RPC_URL" \
-    --settlement-account-address "$SAYA_ADDRESS" \
-    --settlement-account-private-key "$SAYA_PRIVATE_KEY" \
-    --tee \
-    --tee-registry-address "$tee_registry" \
-    --output-path "$CHAIN_DIR" > "$RUN_DIR/init.log" 2>&1
-  PILTOVER="$(read_piltover)"
-  [[ -n "$PILTOVER" ]] || { cat "$RUN_DIR/init.log" >&2; fail "could not parse piltover from $CHAIN_DIR/config.toml."; }
-  say "  piltover=$PILTOVER"
-
-  # Enable katana's embedded settlement service: add the operator-owned
-  # [settlement.runtime] section so the appchain node settles itself (proves each
-  # block + submits update_state), replacing the old saya-tee sidecar. The saya
-  # account's key lands in config.toml in plaintext — server-local (.run is gitignored).
-  if ! grep -q '^\[settlement.runtime\]' "$CHAIN_DIR/config.toml"; then
-    say "  adding [settlement.runtime] (embedded settlement)…"
-    cat >> "$CHAIN_DIR/config.toml" <<EOF
-
-[settlement.runtime]
-account-address = "$SAYA_ADDRESS"
-account-private-key = "$SAYA_PRIVATE_KEY"
-tee-registry = "$tee_registry"
-batch-size = ${SAYA_BATCH_SIZE:-1}
-EOF
-  fi
+  for v in APPCHAIN_RPC_URL APPCHAIN_ACCOUNT_ADDRESS APPCHAIN_ACCOUNT_PRIVATE_KEY \
+           PILTOVER_ADDRESS OPERATOR_ADDRESS OPERATOR_PRIVATE_KEY USDC_ADDRESS; do
+    [[ -n "${!v:-}" ]] || fail "missing $v in .env (see .env.example)."
+  done
+  say "settlement piltover (from cartridge-appchain): $PILTOVER_ADDRESS"
+  say "external appchain RPC: $APPCHAIN_RPC_URL"
 
   say "writing base deployments.json…"
+  local appchain_explorer="${APPCHAIN_RPC_URL%/rpc}/explorer"
+  SETTLEMENT_RPC_URL="$SETTLEMENT_RPC_URL" \
+  SETTLEMENT_NETWORK="$SETTLEMENT_NETWORK" \
+  SETTLEMENT_CHAIN_ID="$SETTLEMENT_CHAIN_ID" \
+  SETTLEMENT_EXPLORER="$SETTLEMENT_EXPLORER" \
+  OPERATOR_ADDRESS="$OPERATOR_ADDRESS" \
+  OPERATOR_PRIVATE_KEY="$OPERATOR_PRIVATE_KEY" \
+  PILTOVER_ADDRESS="$PILTOVER_ADDRESS" \
+  USDC_ADDRESS="$USDC_ADDRESS" \
+  APPCHAIN_RPC_URL="$APPCHAIN_RPC_URL" \
+  APPCHAIN_EXPLORER="$appchain_explorer" \
+  APPCHAIN_ACCOUNT_ADDRESS="$APPCHAIN_ACCOUNT_ADDRESS" \
+  APPCHAIN_ACCOUNT_PRIVATE_KEY="$APPCHAIN_ACCOUNT_PRIVATE_KEY" \
+  TORII_SCORE_HTTP="$TORII_SCORE_HTTP" \
+  TORII_GAME_HTTP="$TORII_GAME_HTTP" \
+  DEPLOY_OUT="$DEMO_DIR/deployments.json" \
   node -e '
     const fs = require("node:fs");
-    const g = require(process.argv[1]);
-    const [addr, acct] = Object.entries(g.accounts)[0];
+    const e = process.env;
     const d = {
       settlement: {
-        network: process.argv[11], chainId: process.argv[12],
-        rpcUrl: process.argv[2], explorer: process.argv[10],
-        torii: "http://localhost:" + process.argv[8],
-        account: { address: process.argv[3], privateKey: process.argv[4] },
-        piltover: process.argv[5], usdc: process.argv[6],
+        network: e.SETTLEMENT_NETWORK, chainId: e.SETTLEMENT_CHAIN_ID,
+        rpcUrl: e.SETTLEMENT_RPC_URL, explorer: e.SETTLEMENT_EXPLORER,
+        torii: "http://localhost:" + e.TORII_SCORE_HTTP,
+        account: { address: e.OPERATOR_ADDRESS, privateKey: e.OPERATOR_PRIVATE_KEY },
+        piltover: e.PILTOVER_ADDRESS, usdc: e.USDC_ADDRESS,
       },
       appchain: {
-        rpcUrl: "http://localhost:" + process.argv[7],
-        explorer: "http://localhost:" + process.argv[7] + "/explorer",
-        torii: "http://localhost:" + process.argv[9],
-        account: { address: addr, privateKey: acct.privateKey },
+        rpcUrl: e.APPCHAIN_RPC_URL,
+        explorer: e.APPCHAIN_EXPLORER,
+        torii: "http://localhost:" + e.TORII_GAME_HTTP,
+        account: { address: e.APPCHAIN_ACCOUNT_ADDRESS, privateKey: e.APPCHAIN_ACCOUNT_PRIVATE_KEY },
       },
     };
-    fs.writeFileSync(process.argv[13], JSON.stringify(d, null, 2) + "\n");
-  ' "$CHAIN_DIR/genesis.json" "$SETTLEMENT_RPC_URL" "$OPERATOR_ADDRESS" "$OPERATOR_PRIVATE_KEY" \
-    "$PILTOVER" "$USDC_ADDRESS" "$APPCHAIN_PORT" "$TORII_SCORE_HTTP" "$TORII_GAME_HTTP" \
-    "$SETTLEMENT_EXPLORER" "$SETTLEMENT_NETWORK" "$SETTLEMENT_CHAIN_ID" \
-    "$DEMO_DIR/deployments.json"
+    fs.writeFileSync(e.DEPLOY_OUT, JSON.stringify(d, null, 2) + "\n");
+  '
 }
 
 wait_http() { until curl -s -o /dev/null "$1" 2>/dev/null; do sleep 0.5; done; }
@@ -205,23 +183,14 @@ health() {
     say "  ✓ $label"
     return 0
   }
-  check "appchain RPC :$APPCHAIN_PORT" "http://localhost:$APPCHAIN_PORT" \
+  # The appchain is external (cartridge-appchain) — assert its RPC is reachable so we
+  # fail fast if it's down/misconfigured, but it's not ours to restart.
+  check "appchain RPC (external) $APPCHAIN_RPC_URL" "$APPCHAIN_RPC_URL" \
     -X POST -H 'content-type: application/json' \
     -d '{"jsonrpc":"2.0","id":1,"method":"starknet_chainId","params":[]}'
   check "torii bank :$TORII_SCORE_HTTP" "http://localhost:$TORII_SCORE_HTTP/"
   check "torii game :$TORII_GAME_HTTP" "http://localhost:$TORII_GAME_HTTP/"
-  # Settlement runs inside the appchain node now (the embedded service has no HTTP
-  # endpoint) — assert it from the appchain unit's journal. Bound the scan with --since
-  # (an unbounded journalctl can take minutes on a large/crash-looped journal and
-  # falsely report "not started"), and match the settlement module
-  # `katana_settlement::service`, which logs continuously ("Settled block range") rather
-  # than relying on the single startup line that may be far back in the journal.
-  if journalctl -u "${PFX}-appchain" --since "-5min" --no-pager 2>/dev/null | grep -qE "katana_settlement::service|Settlement service started"; then
-    say "  ✓ embedded settlement"
-  else
-    say "  ✗ embedded settlement not started (journalctl -u ${PFX}-appchain)"; ok=0
-  fi
-  [[ "$ok" == "1" ]] || fail "health check failed — not all services are responding (check: sudo systemctl status 'dungeon-*' ; journalctl -u dungeon-appchain -n50)."
+  [[ "$ok" == "1" ]] || fail "health check failed — not all services are responding (check: sudo systemctl status 'dungeon-*' ; journalctl -u dungeon-torii-game -n50)."
   say "all services healthy."
 }
 
@@ -233,7 +202,6 @@ manifest() {
   mkdir -p "$out_dir"
   say "writing deployment manifest → deployments/<network>.json…"
   DEPLOYMENTS_FILE="$DEMO_DIR/deployments.json" \
-  TEE_REGISTRY="$(cat "$RUN_DIR/tee_registry" 2>/dev/null || true)" \
   GIT_REF="${GIT_REF:-$(git -C "$DEMO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)}" \
   GIT_SHA="${GIT_SHA:-$(git -C "$DEMO_DIR" rev-parse HEAD 2>/dev/null || true)}" \
   DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -247,7 +215,7 @@ manifest() {
       meta: { network: s.network, deployedAt: e.DEPLOYED_AT, gitRef: e.GIT_REF || null, gitSha: e.GIT_SHA || null },
       settlement: {
         network: s.network, chainId: s.chainId, rpcUrl: s.rpcUrl, explorer: s.explorer, torii: s.torii,
-        piltover: s.piltover, teeRegistry: e.TEE_REGISTRY || null, usdc: s.usdc,
+        piltover: s.piltover, usdc: s.usdc,
         gameToken: s.gameToken, goldToken: s.goldToken,
         bankWorld: s.bankWorld, bankSystem: s.bankSystem,
         tokenSale: s.tokenSale, entry: s.entry,
@@ -264,17 +232,12 @@ manifest() {
   '
 }
 
-# ── bring the backend services up under systemd + deploy the economy/worlds ──────
-# deploy.ts runs INLINE (between the appchain and the toriis) — never as a unit, so
-# a reboot restarts the services without re-deploying contracts (no gas).
+# ── bring the backend toriis up under systemd + deploy the economy/worlds ────────
+# deploy.ts runs INLINE (before the toriis) — never as a unit, so a reboot restarts
+# the toriis without re-deploying contracts (no gas). The appchain is external, so
+# there's no appchain unit to start here.
 bringup() {
   units_install
-
-  # The appchain unit runs katana with the [settlement.runtime] section, so it
-  # settles to piltover itself — no separate saya unit.
-  say "starting appchain (dungeon-appchain) on :$APPCHAIN_PORT…"
-  units_start appchain
-  wait_http "http://localhost:$APPCHAIN_PORT/"
 
   say "deploying economy + worlds (scripts/deploy.ts)…"
   ( cd "$DEMO_DIR" && bun run scripts/deploy.ts )
@@ -301,18 +264,18 @@ main() {
 
   load_common
   teardown
-  bootstrap
+  write_deployments
   bringup
   health
   manifest
 
   echo ""
-  say "✓ fresh deploy complete — backend under systemd (enabled for boot):"
+  say "✓ fresh deploy complete — backend toriis under systemd (enabled for boot):"
   echo "    settlement    : $SETTLEMENT_NAME ($SETTLEMENT_RPC_URL)"
-  echo "    appchain RPC  : http://localhost:$APPCHAIN_PORT"
+  echo "    appchain RPC  : $APPCHAIN_RPC_URL  (external — cartridge-appchain)"
   echo "    torii (bank)  : http://localhost:$TORII_SCORE_HTTP/sql"
   echo "    torii (game)  : http://localhost:$TORII_GAME_HTTP/sql"
-  echo "    manage        : sudo systemctl status 'dungeon-*'  |  journalctl -u dungeon-appchain -f"
+  echo "    manage        : sudo systemctl status 'dungeon-*'  |  journalctl -u dungeon-torii-game -f"
   echo ""
   say "deployment manifest (sanitized — committed by the workflow):"
   cat "$DEMO_DIR/deployments/$SETTLEMENT_NETWORK.json"

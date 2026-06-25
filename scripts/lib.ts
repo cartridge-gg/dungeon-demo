@@ -5,7 +5,8 @@
 //   - Plain Starknet contracts (GAME_TOKEN, TokenSale, Entry) via starknet.js
 //     declareAndDeploy, since they aren't Dojo worlds.
 //
-// Settlement is REAL Starknet Sepolia; the appchain is a local Katana rollup.
+// Settlement is REAL Starknet Sepolia; the appchain is an external Katana rollup
+// (cartridge-appchain) — its RPC + deploy account come from deployments.json.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";

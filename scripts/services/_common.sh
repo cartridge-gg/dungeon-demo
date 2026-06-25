@@ -7,20 +7,17 @@
 # runs the one-time bootstrap/deploy and then backgrounds these same scripts, so each
 # service has a single source of truth for its command.
 #
-# Prereqs: the bootstrap (piltover + rollup genesis) and deploy must already have run —
-# i.e. `up.sh` at least once. The scripts read what they need from .env,
-# .run/chain-config, .run/tee_registry, and deployments.json.
+# Prereqs: the deploy (economy + worlds, scripts/deploy.ts) must already have run — i.e.
+# `up.sh` at least once. The appchain is external (owned by cartridge-appchain); the
+# scripts read what they need from .env and deployments.json.
 set -euo pipefail
 
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO_ROOT="$(cd "$DEMO_DIR/../.." && pwd)"
 RUN_DIR="$DEMO_DIR/.run"
-CHAIN_DIR="$RUN_DIR/chain-config"
-APPCHAIN_DB="$RUN_DIR/appchain-db"   # persistent appchain state — survives restarts
 DEPLOYMENTS="$DEMO_DIR/deployments.json"
 
 # Ports — keep in sync with up.sh.
-APPCHAIN_PORT=5070
 TORII_SCORE_HTTP=8091; TORII_SCORE_GRPC=50091; TORII_SCORE_RELAY=9191
 TORII_GAME_HTTP=8092;  TORII_GAME_GRPC=50092;  TORII_GAME_RELAY=9194
 FRONTEND_PORT=3002
@@ -42,16 +39,6 @@ case "$SETTLEMENT_NETWORK" in
 esac
 [[ -n "${SETTLEMENT_RPC_URL:-}" ]] || svc_fail "set SETTLEMENT_RPC_URL (or SEPOLIA_RPC_URL) in .env."
 
-# katana binary: katana >= 1.8.0-rc.4 (embedded settlement), pinned in .tool-versions
-# (asdf) like sozo/torii/scarb. Honor a pre-set $KATANA to override (e.g. a local build,
-# or the remote deploy pointing at the server's binary); else take it from PATH.
-if   [[ -n "${KATANA:-}" && -x "${KATANA:-}" ]]; then :
-elif command -v katana >/dev/null 2>&1;          then KATANA="$(command -v katana)"
-else svc_fail "katana not found — run 'asdf install' here (pinned in .tool-versions), or set KATANA to a katana >= 1.8.0-rc.4 binary."; fi
-
-# Appchain paymaster/session middleware + Controller auto-deploy — always on.
-CONTROLLER_FLAGS="--paymaster --cartridge.paymaster --cartridge.controllers"
-
 # Kill whatever holds a TCP port so re-running a service script restarts it cleanly.
 free_port() {
   local pids; pids="$(lsof -ti "tcp:$1" 2>/dev/null || true)"
@@ -62,6 +49,3 @@ free_port() {
 read_deployment() {
   node -e 'let v=require(process.argv[2]);for(const k of process.argv[1].split("."))v=v?.[k];if(v==null)process.exit(3);console.log(v)' "$1" "$DEPLOYMENTS" 2>/dev/null
 }
-# piltover from the generated rollup config; TEE registry from the bootstrap file.
-read_piltover()     { sed -nE 's/^core_contract = "(0x[0-9a-fA-F]+)".*/\1/p' "$CHAIN_DIR/config.toml" 2>/dev/null; }
-read_tee_registry() { cat "$RUN_DIR/tee_registry" 2>/dev/null; }

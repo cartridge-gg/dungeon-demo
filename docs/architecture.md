@@ -5,22 +5,23 @@
 The mental model: **where the app's state lives**, **how the two chains connect**,
 and **what the token economy adds** on top of the cross-chain loop.
 
-## Two worlds, but only one local chain
+## Two worlds, both on external chains
 
 Like any Dojo appchain app this is built from **worlds** — an on-chain database
 (models) plus the systems that write to them. This demo has **two** worlds:
 
 | World | Chain | Holds | Why there |
 | --- | --- | --- | --- |
-| `game` | appchain (L2, local) | the live run, the GOLD vault, the leaderboard | play is high-frequency, cheap, instant |
+| `game` | appchain (L2, **external** — cartridge-appchain) | the live run, the GOLD vault, the leaderboard | play is high-frequency, cheap, instant |
 | `bank` | **Starknet Sepolia** (L1, real) | mints GOLD when a withdrawal settles | the durable, publicly-verifiable record |
 
-The defining choice: the settlement layer isn't a second local
-Katana — it's **real Starknet Sepolia**. So you run **one** node locally (the
-appchain), and everything on the settlement side (piltover, the `bank` world, the
-token contracts) is deployed to a public chain that other contracts and users can
-see. `cairo/game/src/lib.cairo` is the appchain world; `cairo/score/src/lib.cairo`
-is the settlement `bank` world.
+The defining choice: the settlement layer is **real Starknet Sepolia**, and the
+appchain is **external** — the `CARTRIDGE_TESTNET` rollup run by
+[cartridge-appchain](https://github.com/cartridge-gg/cartridge-appchain). So this repo
+runs **no chain of its own**: it deploys the `game` world to that external appchain and
+deploys everything on the settlement side (the `bank` world, the token contracts) to a
+public chain that other contracts and users can see. `cairo/game/src/lib.cairo` is the
+appchain world; `cairo/score/src/lib.cairo` is the settlement `bank` world.
 
 ## The token economy (depending on an external contract)
 
@@ -83,7 +84,7 @@ RPC. The client (`app/src/chain.ts`) never decodes contract storage.
 | Entry credit + winnings | `game_token` (GAME) + `gold_token` (GOLD) | `cairo/token/src/lib.cairo` |
 | USDC → GAME purchase | `token_sale` (Sepolia) | `cairo/token/src/lib.cairo` |
 | Charge + start a run | `entry` (Sepolia) | `cairo/token/src/lib.cairo` |
-| Cross-chain mailbox + settled state | piltover core (Sepolia) | deployed by `katana init rollup` |
+| Cross-chain mailbox + settled state | piltover core (Sepolia) | provided by cartridge-appchain (`PILTOVER_ADDRESS`) |
 | Indexing for the client | two Torii instances | `up.sh` |
 | Client reads/writes | React app | `app/src/chain.ts`, `app/src/App.tsx` |
 

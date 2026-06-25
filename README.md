@@ -1,17 +1,21 @@
 # Cross-Chain Dungeon
 
-A Katana appchain example that **settles to a real Starknet network** (Sepolia by
-default, **mainnet supported** via `SETTLEMENT_NETWORK`) and **depends
-on an external settlement-layer contract (USDC)**. It's a push-your-luck dungeon
-roguelite with a **two-token economy**: buy **GAME** with USDC and spend it to enter,
-descend with **one appchain transaction per action**, collect **GOLD**, and either
-**extract** (bank the run's gold into your on-L2 vault) or **die** (forfeit the
-in-progress haul). Then **bank once** — withdraw the whole vault to Sepolia, where
-GOLD is minted on L1. The point: appchain value is provisional until you commit it
-to the settlement layer.
+An app that runs against an **external Katana appchain** (the `CARTRIDGE_TESTNET`
+rollup, deployed + operated by [cartridge-appchain](https://github.com/cartridge-gg/cartridge-appchain))
+and **settles to a real Starknet network** (Sepolia by default, **mainnet supported**
+via `SETTLEMENT_NETWORK`), with a token economy that **depends on an external
+settlement-layer contract (USDC)**. It's a push-your-luck dungeon roguelite with a
+**two-token economy**: buy **GAME** with USDC and spend it to enter, descend with
+**one appchain transaction per action**, collect **GOLD**, and either **extract**
+(bank the run's gold into your on-L2 vault) or **die** (forfeit the in-progress
+haul). Then **bank once** — withdraw the whole vault to Sepolia, where GOLD is minted
+on L1. The point: appchain value is provisional until you commit it to the settlement
+layer.
 
-It runs **one** local Katana (the appchain) and settles to a **real public chain**,
-with a token economy layered on top of an external contract (USDC).
+This demo **does not run or bootstrap the appchain** — it consumes the appchain's RPC
+and deploys its game world there, while deploying the economy + settlement world to a
+**real public chain**. The appchain itself (its Katana node, piltover core, and
+settlement) lives in cartridge-appchain.
 
 > New to the appchain architecture? Read the [guide](./docs/README.md) — it builds
 > the mental model (worlds, messaging, settlement, Torii) using this game as the example.
@@ -20,45 +24,48 @@ with a token economy layered on top of an external contract (USDC).
 
 | | |
 | --- | --- |
+| Appchain | **external** — the `CARTRIDGE_TESTNET` rollup ([cartridge-appchain](https://github.com/cartridge-gg/cartridge-appchain)) |
 | Settlement layer | **real Starknet** (Sepolia default, mainnet supported) |
-| Local nodes | **1** — the appchain only |
+| Local nodes | **0** — the appchain is external; we run only the two toriis + the client |
 | Economy | **two tokens**: GAME (USDC→play) + GOLD (winnings, minted on bank) |
 | External dependency | **Circle USDC** on the settlement layer |
 | Gameplay | a dungeon run, **one tx per action**; vault many runs, bank once |
-| Ports | appchain `5070`, torii `8091`/`8092`, frontend `3002` |
+| Ports | torii `8091`/`8092`, frontend `3002` (appchain RPC is external) |
 | Controller | one identity signs **both chains** (hosted keychain; funded on real Sepolia) |
 
 ## Prerequisites
 
 This is *not* fully one-click — settling to a real chain needs real accounts.
 
-1. **katana ≥ 1.8.0-rc.4** — the appchain node settles to piltover itself via its
-   embedded settlement service (no saya-tee sidecar). Pinned in `.tool-versions` and
-   installed by `asdf install`, so normally it just lands on PATH; set `KATANA` in
-   `.env` only to override with a local build.
-2. **Mock TEE registry** — already deployed on Sepolia and reused (no `saya-ops`
-   needed); override with `TEE_REGISTRY_ADDRESS` in `.env` for another network. The
-   `saya-tee` sidecar and its Poseidon message-hash patch are no longer needed either
-   (katana computes the Poseidon hash itself).
-3. **Dojo toolchain** (`katana`/`sozo`/`torii`/`scarb`) via `asdf install` (all pinned
-   in `.tool-versions`). The cairo worlds pull **Dojo from the Scarb registry**
+1. **An external appchain** — the `CARTRIDGE_TESTNET` rollup from
+   [cartridge-appchain](https://github.com/cartridge-gg/cartridge-appchain). Point
+   `APPCHAIN_RPC_URL` at it (the public proxy `https://sepolia-appchain.cartridge.gg/rpc`,
+   or `http://localhost:5070` if you run cartridge-appchain's Katana node locally —
+   start it **first**). You also need a deploy-capable account on that appchain
+   (`APPCHAIN_ACCOUNT_*`, the appchain's fee-less dev account from its genesis) and its
+   piltover core address (`PILTOVER_ADDRESS`). This repo does **not** run Katana,
+   deploy piltover, or operate settlement — that's all cartridge-appchain's job.
+2. **Dojo toolchain** (`sozo`/`torii`/`scarb`) via `asdf install` (all pinned in
+   `.tool-versions`). The cairo worlds pull **Dojo from the Scarb registry**
    (`dojo = "1.8.0"`), so no separate dojo checkout is needed.
-4. **Bun**.
-5. A funded Sepolia **operator** account and a separate funded **settlement** account,
-   and a **USDC** address — all in `.env` (see below).
+3. **Bun**.
+4. A funded Sepolia **operator** account and a **USDC** address — both in `.env` (see
+   below).
 
 ## Run it
 
 ```bash
 git submodule update --init vendor/controller   # Controller account classes (controller-rs); up.sh also does this on demand
-cp .env.example .env     # fill in KATANA, SEPOLIA_RPC_URL, operator + settlement accounts, USDC
-./up.sh                  # appchain :5070 (settles → Sepolia), torii ×2, frontend :3002
+cp .env.example .env     # fill in APPCHAIN_RPC_URL + APPCHAIN_ACCOUNT_* + PILTOVER_ADDRESS, SEPOLIA_RPC_URL, operator, USDC
+# For a fully-local stack: start cartridge-appchain's Katana node first, then set APPCHAIN_RPC_URL=http://localhost:5070
+./up.sh                  # consumes the external appchain, deploys economy + worlds, runs torii ×2 + frontend :3002
 ```
 
-`up.sh` deploys the piltover core on Sepolia (reusing the already-deployed mock TEE
-registry), starts the appchain (whose embedded settlement service settles to piltover itself), deploys the
-economy + worlds (`scripts/deploy.ts`), starts both Torii indexers, and serves the
-client. `./down.sh` stops the local processes.
+`up.sh` checks the external appchain RPC is reachable, writes `deployments.json` from
+your `.env`, deploys the economy + worlds (`scripts/deploy.ts` — the settlement
+contracts + bank world on Sepolia, the game world on the external appchain), declares
+the Controller class on the appchain, starts both Torii indexers, and serves the
+client. `./down.sh` stops our toriis (the appchain is external — left running).
 
 Then open `http://localhost:3002`, **Dev-mint** some GAME (or **Buy** it with
 USDC), start a **New Game** (each dive is its own run — you can keep several open and
@@ -67,14 +74,13 @@ then on the **Bank** tab withdraw the vault to Sepolia to mint **GOLD**.
 
 ## Funding & costs
 
-Every deploy and every `update_state` is a **real Sepolia transaction**:
+The economy/world deploys are **real Sepolia transactions**:
 
-- The **operator** pays for piltover, the GAME/GOLD/sale/entry contracts, and the
-  bank-world migration (the mock TEE registry is reused, not redeployed).
-- The **settlement account** pays for `update_state` on every settled batch
-  (recurring) — the appchain's embedded settlement service submits these. Give it a
-  **dedicated** funded account, never shared with the operator (nonce contention
-  stalls settlement).
+- The **operator** pays for the GAME/GOLD/sale/entry contracts and the bank-world
+  migration on Sepolia.
+- **Settlement gas is not this repo's concern.** piltover deploy and the recurring
+  `update_state` settlement txns are paid by cartridge-appchain's own settlement
+  account — the external appchain settles itself.
 - The **player** path: `Dev-mint` needs only Sepolia gas (no USDC); `Buy` needs
   real test **USDC**. The dev-mint faucet exists so the demo is playable without it.
 
@@ -83,10 +89,12 @@ Every deploy and every `update_state` is a **real Sepolia transaction**:
 Nothing signs by default — **log in** (the lobby button) with a
 [Cartridge Controller](https://github.com/cartridge-gg/controller), ONE identity that
 signs on **both chains**: buy / enter / bank on real Sepolia *and* the dungeon
-play actions on the local appchain, at the same address. The appchain is
-Controller-capable out of the box (`./up.sh` always enables it, plus HTTPS via
-`mkcert`); just log in with a Cartridge Controller — the **hosted keychain**
-(x.cartridge.gg) by default, with a self-hosted keychain as a fully-local fallback. Fund the Controller with a little STRK on real Sepolia. Full
+play actions on the external appchain, at the same address. The appchain is
+Controller-capable (cartridge-appchain runs Katana with the paymaster + Controller
+middleware); `./up.sh` declares the Controller account class on it and serves the
+client over HTTPS via `mkcert`. Just log in with a Cartridge Controller — the
+**hosted keychain** (x.cartridge.gg) by default, with a self-hosted keychain as a
+fully-local fallback. Fund the Controller with a little STRK on real Sepolia. Full
 walkthrough: [docs/controller.md](./docs/controller.md).
 
 ## What's where
@@ -97,7 +105,7 @@ walkthrough: [docs/controller.md](./docs/controller.md).
 | `cairo/score` | settlement `bank` world (`bank` namespace) — mints GOLD when a withdrawal settles |
 | `cairo/token` | `game_token` (GAME), `gold_token` (GOLD), `token_sale` (USDC→GAME), `entry` (charge + L1→L2) |
 | `scripts/` | `deploy.ts` + `lib.ts` (deploy economy + migrate worlds), `declare-controller-class.ts` |
-| `scripts/services/` | one launcher per long-lived service — `appchain.sh` (runs katana incl. the embedded settlement service), `torii-bank.sh`, `torii-game.sh`, `frontend.sh`. Run any on its own (e.g. `RESET=1 scripts/services/torii-bank.sh` to re-index the bank indexer); `up.sh` does the bootstrap/deploy then delegates to these |
+| `scripts/services/` | one launcher per long-lived service — `torii-bank.sh`, `torii-game.sh`, `frontend.sh` (the appchain is external, so no katana launcher). Run any on its own (e.g. `RESET=1 scripts/services/torii-bank.sh` to re-index the bank indexer); `up.sh` does the deploy then delegates to these |
 | `app/` | React + Vite terminal client (`app/src/chain.ts`, `App.tsx`, `wallet.tsx`) |
 | `design/ui-mockup.html` | the standalone terminal-UI design mockup |
 | `up.sh` / `down.sh` | one-command bring-up / teardown |
@@ -106,19 +114,22 @@ walkthrough: [docs/controller.md](./docs/controller.md).
 
 ## Deployed contracts
 
-From a fresh deploy (`FRESH=1`) on **2026-06-24**. Settlement is real
-**Starknet Sepolia**; the appchain is the `CARTRIDGE_TESTNET` rollup (public RPC at
-`https://sepolia-appchain.cartridge.gg/rpc`). The Sepolia contracts
-(piltover, tokens, worlds) are **redeployed on every `FRESH=1`** — the always-current source
-is `deployments.json` (repo root). The appchain world/system and the TEE-registry mock are
-derived from fixed seeds/salts, so they're stable across redeploys.
+From a fresh deploy on **2026-06-24**. Settlement is real **Starknet Sepolia**; the
+appchain is the external `CARTRIDGE_TESTNET` rollup (public RPC at
+`https://sepolia-appchain.cartridge.gg/rpc`, owned by
+[cartridge-appchain](https://github.com/cartridge-gg/cartridge-appchain)). The
+economy contracts + worlds (tokens, sale, entry, bank world, game world) are
+**redeployed on every `up.sh`** — the always-current source is `deployments.json`
+(repo root). The piltover core + TEE-registry mock belong to the appchain
+(cartridge-appchain) and are stable; the appchain game world/system are derived from
+fixed seeds, so they're stable across redeploys.
 
 ### Settlement — Starknet Sepolia ([Voyager](https://sepolia.voyager.online))
 
 | Contract | Address |
 | --- | --- |
-| piltover (rollup settlement core) | [`0x4dc5dea5c8b22a298d6a1f91a0dd3687c2cdf13149f773812ace1f3ac6baf30`](https://sepolia.voyager.online/contract/0x4dc5dea5c8b22a298d6a1f91a0dd3687c2cdf13149f773812ace1f3ac6baf30) |
-| TEE registry (mock attestation) | [`0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15`](https://sepolia.voyager.online/contract/0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15) |
+| piltover (rollup settlement core — owned by cartridge-appchain) | [`0x4dc5dea5c8b22a298d6a1f91a0dd3687c2cdf13149f773812ace1f3ac6baf30`](https://sepolia.voyager.online/contract/0x4dc5dea5c8b22a298d6a1f91a0dd3687c2cdf13149f773812ace1f3ac6baf30) |
+| TEE registry (mock attestation — owned by cartridge-appchain) | [`0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15`](https://sepolia.voyager.online/contract/0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15) |
 | GAME token (entry credit) | [`0x48ea38627cda858ab37277b1b236ff00ead235f60a6ea42ec4d00fe2fc14fd8`](https://sepolia.voyager.online/contract/0x48ea38627cda858ab37277b1b236ff00ead235f60a6ea42ec4d00fe2fc14fd8) |
 | GOLD token (winnings) | [`0x13d51f19cc118ffb8a68f59b7e31900e7909d6d11ee197b28b5baf63d077077`](https://sepolia.voyager.online/contract/0x13d51f19cc118ffb8a68f59b7e31900e7909d6d11ee197b28b5baf63d077077) |
 | bank world | [`0xf4518e2a91b78caf361ab1dbf5c9276c1400644304aa32a2b4e4179a77867c`](https://sepolia.voyager.online/contract/0xf4518e2a91b78caf361ab1dbf5c9276c1400644304aa32a2b4e4179a77867c) |
@@ -127,7 +138,7 @@ derived from fixed seeds/salts, so they're stable across redeploys.
 | TokenSale (USDC→GAME — wired; contract-only, UI uses Dev-mint) | [`0x21675ca6794932e5e2faec5fc814bd37f7890ddb6a24e5186d43547f749548f`](https://sepolia.voyager.online/contract/0x21675ca6794932e5e2faec5fc814bd37f7890ddb6a24e5186d43547f749548f) |
 | USDC (external dependency — Circle, 6 decimals; TokenSale spends it) | [`0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343`](https://sepolia.voyager.online/contract/0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343) |
 
-### Appchain — `CARTRIDGE_TESTNET` rollup (`http://localhost:5070` · public `https://sepolia-appchain.cartridge.gg/rpc`)
+### Appchain — external `CARTRIDGE_TESTNET` rollup (public `https://sepolia-appchain.cartridge.gg/rpc`, or `http://localhost:5070` when run locally via cartridge-appchain)
 
 | Contract | Address |
 | --- | --- |
@@ -152,6 +163,5 @@ with (see `scripts/declare-controller-class.ts`).
 
 | Role | Address |
 | --- | --- |
-| Operator (settlement deploys + dev signer) | [`0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f`](https://sepolia.voyager.online/contract/0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f) |
-| Settlement account (piltover operator — the embedded service's `update_state` signer) | [`0x0639956bAB912477F04fa7b9189d014E785092E795b3B57E9481f89642cde52B`](https://sepolia.voyager.online/contract/0x0639956bAB912477F04fa7b9189d014E785092E795b3B57E9481f89642cde52B) |
-| Appchain dev account (default play signer) | `0xdcbeb1f415c0c3e8ae300f3550ff9d649c03c2aeea5ec15f9862139ac3857b` |
+| Operator (settlement-side deploys + dev signer) | [`0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f`](https://sepolia.voyager.online/contract/0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f) |
+| Appchain dev account (default play signer — from the appchain's genesis) | `0xdcbeb1f415c0c3e8ae300f3550ff9d649c03c2aeea5ec15f9862139ac3857b` |

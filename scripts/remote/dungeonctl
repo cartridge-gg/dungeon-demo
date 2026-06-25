@@ -17,7 +17,7 @@
 #   dungeonctl status
 #   dungeonctl logs -f                 # all services, follow
 #   dungeonctl logs torii-game -f
-#   dungeonctl restart appchain
+#   dungeonctl restart torii-game
 #   dungeonctl reset torii-bank        # wipe + re-index the Sepolia indexer
 #   dungeonctl up                      # install + start + enable (no gas; no deploy.ts)
 #   dungeonctl shell                   # interactive shell on the box, in the repo dir
@@ -37,11 +37,11 @@ rexec_tty() { "${SSH[@]}" -t -- "cd $DIR && $*"; }   # tty: needed for sudo prom
 
 usage() {
   cat >&2 <<EOF
-usage: dungeonctl <cmd> [args]   (services: appchain | torii-bank | torii-game)
-  status [svc]              systemctl status (all three if omitted)
+usage: dungeonctl <cmd> [args]   (services: torii-bank | torii-game)
+  status [svc]              systemctl status (all units if omitted)
   logs [svc] [-f]           journalctl (all services if svc omitted; -f to follow)
   start|stop|restart <svc>  per-service lifecycle
-  reset <torii-svc>         wipe the indexer's db + re-index (NOT appchain)
+  reset <torii-svc>         wipe the indexer's db + re-index
   up | stop-all | install | remove-all | enable    forward to units.sh
   exec <cmd…>               run a command in the repo dir on the server
   shell                     interactive shell on the server, in the repo dir

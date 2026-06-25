@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Stop the dungeon demo: the appchain Katana (:5070, which also runs the embedded
-# settlement service) and both torii indexers (:8091/:8092). The settlement layer
-# is remote Sepolia — nothing to stop there.
+# Stop the dungeon demo's own processes: both torii indexers (:8091/:8092). The
+# appchain is external (owned by cartridge-appchain) and the settlement layer is remote
+# Sepolia — nothing of ours to stop there.
 set -uo pipefail
 
 stopped=0
@@ -16,7 +16,6 @@ kill_match() {
   fi
 }
 
-kill_match "appchain katana (:5070)" "katana .*--http.port 5070"
 kill_match "torii (score :8091)" "torii .*--http.port 8091"
 kill_match "torii (game :8092)" "torii .*--http.port 8092"
 

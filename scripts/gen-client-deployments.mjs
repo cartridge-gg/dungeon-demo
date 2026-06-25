@@ -4,7 +4,8 @@
 // sanitized, but with the server's *localhost* service URLs) and, via this script,
 // the committed client config (deployments.json at the repo root) that the Vite app
 // bundles. The only difference is the service endpoints: the browser can't reach the
-// server's loopback-bound katana/torii, so it goes through the public reverse proxy.
+// server's loopback-bound toriis, so it goes through the public reverse proxy (and the
+// appchain RPC is external — its own public host).
 //
 // Settlement RPC + explorer are already public (taken straight from the manifest).
 // The toriis are app-specific and go to the app <backendUrl>. The appchain RPC/explorer
