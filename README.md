@@ -106,8 +106,9 @@ walkthrough: [docs/controller.md](./docs/controller.md).
 
 ## Deployed contracts
 
-From a fresh deploy (`FRESH=1 ./up.sh`) on **2026-06-08**. Settlement is real
-**Starknet Sepolia**; the appchain is the local `DUNGEON` rollup. The Sepolia contracts
+From a fresh deploy (`FRESH=1`) on **2026-06-24**. Settlement is real
+**Starknet Sepolia**; the appchain is the `CARTRIDGE_TESTNET` rollup (public RPC at
+`https://sepolia-appchain.cartridge.gg/rpc`). The Sepolia contracts
 (piltover, tokens, worlds) are **redeployed on every `FRESH=1`** — the always-current source
 is `deployments.json` (repo root). The appchain world/system and the TEE-registry mock are
 derived from fixed seeds/salts, so they're stable across redeploys.
@@ -116,17 +117,17 @@ derived from fixed seeds/salts, so they're stable across redeploys.
 
 | Contract | Address |
 | --- | --- |
-| piltover (rollup settlement core) | [`0x6ddda1669a4f594c2a6c922e47081e3b9fd627d0da045b53012bae636f8d6fe`](https://sepolia.voyager.online/contract/0x6ddda1669a4f594c2a6c922e47081e3b9fd627d0da045b53012bae636f8d6fe) |
+| piltover (rollup settlement core) | [`0x4dc5dea5c8b22a298d6a1f91a0dd3687c2cdf13149f773812ace1f3ac6baf30`](https://sepolia.voyager.online/contract/0x4dc5dea5c8b22a298d6a1f91a0dd3687c2cdf13149f773812ace1f3ac6baf30) |
 | TEE registry (mock attestation) | [`0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15`](https://sepolia.voyager.online/contract/0x37189b1807f1358074b70b3dc8ab79167bbf72cff1296286052f6dfe31c8f15) |
-| GAME token (entry credit) | [`0x476d79c46f186018f7bfe9c5ad12a640b5a59ad0b0602275a1fa274e95b8de1`](https://sepolia.voyager.online/contract/0x476d79c46f186018f7bfe9c5ad12a640b5a59ad0b0602275a1fa274e95b8de1) |
-| GOLD token (winnings) | [`0x3b17b4ebfa73a9bafc951b6de0b9110d65af78e4555a90356bcc48b9cb8e763`](https://sepolia.voyager.online/contract/0x3b17b4ebfa73a9bafc951b6de0b9110d65af78e4555a90356bcc48b9cb8e763) |
-| bank world | [`0x10cf0deda44ff218a29f9223945c5a01cd7c86667349334c43f4f4c53befae1`](https://sepolia.voyager.online/contract/0x10cf0deda44ff218a29f9223945c5a01cd7c86667349334c43f4f4c53befae1) |
-| bank system (consumes withdrawals → mints GOLD) | [`0x3ab197dc7b89760f445f4640a3fe2a018b2d5f991b17b59f6a119eab2c2d6c`](https://sepolia.voyager.online/contract/0x3ab197dc7b89760f445f4640a3fe2a018b2d5f991b17b59f6a119eab2c2d6c) |
-| Entry (charge GAME + L1→L2 enter) | [`0x158828443eea1b9fbca6e913642740b7683588e33a8ab9826048a8992e9c412`](https://sepolia.voyager.online/contract/0x158828443eea1b9fbca6e913642740b7683588e33a8ab9826048a8992e9c412) |
-| TokenSale (USDC→GAME — wired; contract-only, UI uses Dev-mint) | [`0x7f48c547103fa23dcc10eb2ec17f72a8b3ba57fb16dbfbebf4217a28a8be73d`](https://sepolia.voyager.online/contract/0x7f48c547103fa23dcc10eb2ec17f72a8b3ba57fb16dbfbebf4217a28a8be73d) |
+| GAME token (entry credit) | [`0x48ea38627cda858ab37277b1b236ff00ead235f60a6ea42ec4d00fe2fc14fd8`](https://sepolia.voyager.online/contract/0x48ea38627cda858ab37277b1b236ff00ead235f60a6ea42ec4d00fe2fc14fd8) |
+| GOLD token (winnings) | [`0x13d51f19cc118ffb8a68f59b7e31900e7909d6d11ee197b28b5baf63d077077`](https://sepolia.voyager.online/contract/0x13d51f19cc118ffb8a68f59b7e31900e7909d6d11ee197b28b5baf63d077077) |
+| bank world | [`0xf4518e2a91b78caf361ab1dbf5c9276c1400644304aa32a2b4e4179a77867c`](https://sepolia.voyager.online/contract/0xf4518e2a91b78caf361ab1dbf5c9276c1400644304aa32a2b4e4179a77867c) |
+| bank system (consumes withdrawals → mints GOLD) | [`0x393fb235f4ec2396dd79268ce24adc52d94c47d13bae67e7f8cf3ed89819c20`](https://sepolia.voyager.online/contract/0x393fb235f4ec2396dd79268ce24adc52d94c47d13bae67e7f8cf3ed89819c20) |
+| Entry (charge GAME + L1→L2 enter) | [`0x72344a18e676f782448b4dcde87635de94bf8864532745954ab07802ded9dd3`](https://sepolia.voyager.online/contract/0x72344a18e676f782448b4dcde87635de94bf8864532745954ab07802ded9dd3) |
+| TokenSale (USDC→GAME — wired; contract-only, UI uses Dev-mint) | [`0x21675ca6794932e5e2faec5fc814bd37f7890ddb6a24e5186d43547f749548f`](https://sepolia.voyager.online/contract/0x21675ca6794932e5e2faec5fc814bd37f7890ddb6a24e5186d43547f749548f) |
 | USDC (external dependency — Circle, 6 decimals; TokenSale spends it) | [`0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343`](https://sepolia.voyager.online/contract/0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343) |
 
-### Appchain — local `DUNGEON` rollup (`http://localhost:5070`)
+### Appchain — `CARTRIDGE_TESTNET` rollup (`http://localhost:5070` · public `https://sepolia-appchain.cartridge.gg/rpc`)
 
 | Contract | Address |
 | --- | --- |
