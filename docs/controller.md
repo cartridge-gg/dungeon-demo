@@ -11,7 +11,8 @@ It's the only login: the Login button prompts the Controller connect directly.
 `app/src/wallet.tsx` gives the `ControllerConnector` both chains and exposes two
 signers — `l1Account` (Sepolia) and `l2Account` (appchain). Each wraps the raw
 `controller.account` and **switches the keychain's chain** around the call: `l2Account`
-switches to `shortString("CARTRIDGE_TESTNET")`, executes the play action, then switches
+switches to the appchain's chain id (recorded in `deployments.json` at deploy time,
+e.g. `CARTRIDGE_MAINNET`), executes the play action, then switches
 back to Sepolia for the next L1 op. The **player** is the Controller address (same on both
 chains), so a run entered on Sepolia is played and banked by that same Controller.
 Details in [client.md](./client.md#wallets-controller-only).

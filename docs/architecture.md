@@ -15,8 +15,9 @@ Like any Dojo appchain app this is built from **worlds** — an on-chain databas
 | `game` | appchain (L2, **external** — cartridge-appchain) | the live run, the GOLD vault, the leaderboard | play is high-frequency, cheap, instant |
 | `bank` | **Starknet Sepolia** (L1, real) | mints GOLD when a withdrawal settles | the durable, publicly-verifiable record |
 
-The defining choice: the settlement layer is **real Starknet Sepolia**, and the
-appchain is **external** — the `CARTRIDGE_TESTNET` rollup run by
+The defining choice: the settlement layer is **real Starknet** (mainnet for the live
+deploy; sepolia also supported), and the appchain is **external** — a shared rollup
+(`CARTRIDGE_MAINNET` live, with a `CARTRIDGE_TESTNET` mock sibling) run by
 [cartridge-appchain](https://github.com/cartridge-gg/cartridge-appchain). So this repo
 runs **no chain of its own**: it deploys the `game` world to that external appchain and
 deploys everything on the settlement side (the `bank` world, the token contracts) to a

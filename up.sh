@@ -3,7 +3,7 @@
 # against an EXTERNAL appchain (deployed + operated by cartridge-gg/cartridge-appchain)
 # and settles to REAL Starknet Sepolia (remote). Nothing of the appchain runs here:
 #
-#   external appchain Katana (CARTRIDGE_TESTNET) — owned by cartridge-appchain.
+#   external appchain Katana (CARTRIDGE_MAINNET / CARTRIDGE_TESTNET) — owned by cartridge-appchain.
 #     It already settles to its own piltover core on Sepolia; we only consume its RPC.
 #   Starknet Sepolia (remote)
 #     + GAME_TOKEN / TokenSale / Entry / score world  (deployed by scripts/deploy.ts)
@@ -71,8 +71,9 @@ for bin in sozo torii scarb; do
 done
 echo "→ appchain (external): $APPCHAIN_RPC_URL"
 echo "→ settlement: $SETTLEMENT_NAME ($SETTLEMENT_RPC_URL)"
-echo "→ the external appchain is Controller-capable (paymaster + Controller auto-deploy"
-echo "   live on it). Login with a Cartridge Controller (hosted keychain). See docs/controller.md."
+echo "→ Controller support depends on the appchain: the mock rollup runs the paymaster +"
+echo "   Controller middleware; the enclave rollups do not (play falls back to the dev"
+echo "   account signer). See docs/controller.md."
 
 TORII_SCORE_PID=""; TORII_GAME_PID=""
 cleanup() {

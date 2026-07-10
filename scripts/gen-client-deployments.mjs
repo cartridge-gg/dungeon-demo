@@ -49,6 +49,9 @@ const client = {
     rpcUrl: `${appchainBackend}/rpc`,
     explorer: `${appchainBackend}/rpc/explorer`,
     torii: `${backend}/torii/game`,
+    // Short-string chain id the Controller switches to for play actions. Older
+    // manifests predate the field — fall back to the network's shared rollup.
+    chainId: a.chainId ?? (s.network === "mainnet" ? "CARTRIDGE_MAINNET" : "CARTRIDGE_TESTNET"),
     gameWorld: a.gameWorld,
     gameSystem: a.gameSystem,
   },

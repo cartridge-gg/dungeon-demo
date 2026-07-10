@@ -12,6 +12,7 @@ import type { Chain } from "@starknet-react/chains";
 import {
   SETTLEMENT_RPC,
   APPCHAIN_RPC,
+  APPCHAIN_CHAIN_ID_NAME,
   SETTLEMENT_CHAIN_ID,
   SETTLEMENT_NETWORK,
   SETTLEMENT_NAME,
@@ -26,10 +27,13 @@ import {
 } from "./chain.ts";
 
 // Chain ids (felt). Settlement is the configured network (Sepolia by default, or
-// mainnet); the appchain runs `katana init rollup --id CARTRIDGE_TESTNET`. switchStarknetChain
-// takes these strings.
+// mainnet); the appchain's id (e.g. CARTRIDGE_MAINNET) is recorded in deployments.json
+// at deploy time. switchStarknetChain takes these strings.
 const CHAIN_ID = SETTLEMENT_CHAIN_ID === "SN_MAIN" ? constants.StarknetChainId.SN_MAIN : constants.StarknetChainId.SN_SEPOLIA;
-const APPCHAIN_CHAIN_ID = shortString.encodeShortString("CARTRIDGE_TESTNET");
+const APPCHAIN_CHAIN_ID = shortString.encodeShortString(APPCHAIN_CHAIN_ID_NAME);
+// Display name + slug derived from the id: CARTRIDGE_MAINNET → "Cartridge Mainnet".
+const APPCHAIN_NAME = APPCHAIN_CHAIN_ID_NAME.split("_").map((w) => w[0] + w.slice(1).toLowerCase()).join(" ");
+const APPCHAIN_SLUG = APPCHAIN_CHAIN_ID_NAME.toLowerCase().replace(/_/g, "-");
 const STRK = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 
 // starknet-react requires a paymaster provider per chain (its default reads
@@ -43,7 +47,7 @@ const mkChain = (id: string, name: string, network: string, rpc: string): Chain 
   paymasterRpcUrls: { avnu: { http: [rpc] } },
 });
 const settlementChain = mkChain(CHAIN_ID, SETTLEMENT_NAME, SETTLEMENT_NETWORK, SETTLEMENT_RPC);
-const appchainChain = mkChain(APPCHAIN_CHAIN_ID, "Cartridge Testnet", "cartridge-testnet", APPCHAIN_RPC);
+const appchainChain = mkChain(APPCHAIN_CHAIN_ID, APPCHAIN_NAME, APPCHAIN_SLUG, APPCHAIN_RPC);
 
 const provider = jsonRpcProvider({
   rpc: (c: Chain) => ({ nodeUrl: c.id === appchainChain.id ? APPCHAIN_RPC : SETTLEMENT_RPC }),
@@ -327,8 +331,8 @@ function WalletInner({ children }: PropsWithChildren) {
           const ok = await ctrl.switchStarknetChain(APPCHAIN_CHAIN_ID);
           if (!ok) {
             throw new Error(
-              "Controller could not switch to the appchain (CARTRIDGE_TESTNET). The keychain can't reach " +
-                "http://localhost:5070 — enable chrome://flags/#local-network-access-check, or use " +
+              `Controller could not switch to the appchain (${APPCHAIN_CHAIN_ID_NAME}). The keychain can't reach ` +
+                `${APPCHAIN_RPC} — for a localhost RPC, enable chrome://flags/#local-network-access-check, or use ` +
                 "the self-hosted keychain (VITE_KEYCHAIN_URL=https://localhost:3010).",
             );
           }

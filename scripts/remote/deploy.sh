@@ -223,6 +223,7 @@ manifest() {
       },
       appchain: {
         rpcUrl: a.rpcUrl, explorer: a.explorer, torii: a.torii,
+        chainId: a.chainId ?? null,                   // short string, e.g. CARTRIDGE_MAINNET
         gameWorld: a.gameWorld, gameSystem: a.gameSystem,
         devAccount: a.account?.address ?? null,       // address only — never the key
       },

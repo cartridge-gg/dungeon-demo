@@ -110,8 +110,9 @@ as one identity. The committed `deployments.json` carries **no account keys** �
 `StarknetConfig` both chains. It exposes two signers — `l1Account` (buy / enter /
 bank on Sepolia) and `l2Account` (the play actions on the appchain). Each wraps the
 raw `controller.account` and **switches the keychain's chain** around the call:
-`l1Account` switches to Sepolia first (a prior play may have left it on the
-appchain); `l2Account` switches to the appchain (`shortString("CARTRIDGE_TESTNET")`), executes,
+`l1Account` switches to the settlement chain first (a prior play may have left it on
+the appchain); `l2Account` switches to the appchain (its chain id — e.g.
+`CARTRIDGE_MAINNET` — is recorded in `deployments.json` at deploy time), executes,
 then switches back to Sepolia. We use `controller.account`, not starknet-react's
 account (which is pinned to the Sepolia RPC and would estimate appchain fees against
 Sepolia). Session policies cover the Sepolia entrypoints **and** the game-system play

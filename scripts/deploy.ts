@@ -15,7 +15,7 @@
 // first; Entry addresses the appchain game system, so the game world must exist
 // before Entry; the sale (GAME) and the bank (GOLD) must each be granted as minters.
 
-import { cairo } from "starknet";
+import { cairo, shortString } from "starknet";
 import { config } from "./config.ts";
 import {
   account,
@@ -39,6 +39,18 @@ async function main() {
 
   console.log("[deploy] waiting for Sepolia + appchain rpc...");
   await Promise.all([waitForRpc(d.settlement.rpcUrl), waitForRpc(d.appchain.rpcUrl)]);
+
+  // Record the appchain's chain id (a short string, e.g. CARTRIDGE_MAINNET). The
+  // client needs it to switch the Controller onto the appchain — it's a property of
+  // the external appchain, so read it from the chain rather than hardcoding it.
+  const chainIdRes = await fetch(d.appchain.rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "starknet_chainId", params: [], id: 1 }),
+  });
+  d.appchain.chainId = shortString.decodeShortString(((await chainIdRes.json()) as { result: string }).result);
+  saveDeployments(d);
+  console.log("[deploy] appchain chain id:", d.appchain.chainId);
 
   const operator = account(d.settlement.rpcUrl, d.settlement.account);
 

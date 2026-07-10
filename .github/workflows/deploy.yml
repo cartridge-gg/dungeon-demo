@@ -1,7 +1,10 @@
-name: Deploy fresh stack to Sepolia (TEE server)
+name: Deploy fresh stack (TEE server)
 
-# Manual only — a fresh deploy redeploys every Sepolia contract (real gas) and
-# restarts the live stack on the TEE server. There is no automatic trigger.
+# Manual only — a fresh deploy redeploys every settlement-side contract (real gas)
+# and restarts the live stack on the TEE server. There is no automatic trigger.
+# The settlement network (sepolia/mainnet) and the target appchain both come from
+# the DEPLOY_ENV secret (the server's .env — see .env.example); PUBLIC_APPCHAIN_URL
+# (repo variable) must point at the matching appchain proxy.
 on:
   workflow_dispatch:
     inputs:
@@ -16,7 +19,7 @@ on:
 
 # One deploy at a time; never interrupt an in-flight one (it spends real gas).
 concurrency:
-  group: deploy-sepolia
+  group: deploy
   cancel-in-progress: false
 
 # contents: write so the deploy can commit the sanitized manifest/client config back;
@@ -98,7 +101,9 @@ jobs:
           # on the server). Override with a repo variable if the domain changes.
           PUBLIC_BACKEND_URL: ${{ vars.PUBLIC_BACKEND_URL || 'https://dungeon-backend.cartridge.gg' }}
           # Appchain RPC host (shared deployment) — separate from the app backend/toriis.
-          PUBLIC_APPCHAIN_URL: ${{ vars.PUBLIC_APPCHAIN_URL || 'https://sepolia-appchain.cartridge.gg' }}
+          # Must match the appchain in DEPLOY_ENV (mainnet enclave by default; the
+          # sepolia mock lives at https://sepolia-appchain.cartridge.gg).
+          PUBLIC_APPCHAIN_URL: ${{ vars.PUBLIC_APPCHAIN_URL || 'https://appchain.cartridge.gg/mainnet' }}
         run: |
           # Pull the sanitized manifest dir off the server (no private keys — see
           # the manifest() step in scripts/remote/deploy.sh) into this checkout.

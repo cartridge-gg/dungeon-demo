@@ -55,7 +55,7 @@ _db_dir() {
 # name|script|After-extra|Description  (one per backend service)
 _unit_table() {
   cat <<EOF
-torii-bank|torii-bank.sh||Dungeon torii — bank world (Starknet Sepolia)
+torii-bank|torii-bank.sh||Dungeon torii — bank world (settlement network)
 torii-game|torii-game.sh||Dungeon torii — game world (external appchain)
 EOF
 }

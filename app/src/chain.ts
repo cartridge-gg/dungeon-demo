@@ -22,6 +22,10 @@ export const SETTLEMENT_NAME = SETTLEMENT_NETWORK === "mainnet" ? "Starknet Main
 
 export const SETTLEMENT_RPC = deployments.settlement.rpcUrl;
 export const APPCHAIN_RPC = deployments.appchain.rpcUrl;
+// The appchain's chain id as a short string (e.g. "CARTRIDGE_MAINNET") — recorded at
+// deploy time; the Controller switches to it for play actions. Older configs predate
+// the field, and every pre-field deploy was the shared CARTRIDGE_TESTNET rollup.
+export const APPCHAIN_CHAIN_ID_NAME = (deployments.appchain as { chainId?: string }).chainId ?? "CARTRIDGE_TESTNET";
 export const SETTLEMENT_EXPLORER = deployments.settlement.explorer;
 export const APPCHAIN_EXPLORER = deployments.appchain.explorer;
 

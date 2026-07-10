@@ -42,6 +42,7 @@ export type Deployments = {
     explorer: string;
     torii: string;
     account: Keypair; // appchain dev account (from the rollup genesis)
+    chainId?: string; // short-string chain id (e.g. CARTRIDGE_MAINNET), read from the chain
     gameWorld?: string;
     gameSystem?: string;
   };

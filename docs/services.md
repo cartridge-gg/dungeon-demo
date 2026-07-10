@@ -22,11 +22,13 @@ real Sepolia. This repo runs only the two toriis and the client.
 
 ## Katana — the appchain (external; we run none)
 
-There is **no local Katana** in this repo. The appchain is the `CARTRIDGE_TESTNET`
-rollup deployed and operated by cartridge-appchain — it runs the Katana node, deploys
-piltover on Sepolia, and runs the embedded settlement service. We only consume its
-RPC (`APPCHAIN_RPC_URL` from `.env`: the public proxy, or `http://localhost:5070` when
-you run cartridge-appchain's node locally).
+There is **no local Katana** in this repo. The appchain is a shared rollup
+(`CARTRIDGE_MAINNET` for the live deploy — a real SEV-SNP enclave with SP1 proving; a
+`CARTRIDGE_TESTNET` mock sibling also exists) deployed and operated by
+cartridge-appchain — it runs the Katana node, deploys piltover on the settlement
+network, and runs the embedded settlement service. We only consume its RPC
+(`APPCHAIN_RPC_URL` from `.env`: the public proxy, or the loopback node when you run
+on cartridge-appchain's host).
 
 For reference, cartridge-appchain runs Katana roughly like this (see that repo for the
 authoritative flags):
@@ -39,8 +41,12 @@ katana --tee mock --dev --dev.no-fee --block-time 5000 \
 - `--tee mock` — TEE-settled rollup with mock attestation.
 - `--messaging.enabled` — watch **Sepolia** and relay L1→L2 messages as `L1HandlerTx`.
   Without this, entries never reach the appchain.
-- `--dev --dev.no-fee` — fees off (so play actions are free) on chain id
-  `CARTRIDGE_TESTNET`.
+- `--dev --dev.no-fee` — fees off (so play actions are free); the chain id is
+  `CARTRIDGE_MAINNET` / `CARTRIDGE_TESTNET` per deployment.
+- The mainnet deployment runs in an **SEV-SNP enclave** (`--tee sev-snp`) with real
+  SP1 proofs — and **without** the paymaster/Controller middleware (no
+  `paymaster-service` in the enclave image), so Controller play actions aren't
+  fee-sponsored there; the dev account signs play by default.
 - `--block-time 5000` — mine on a steady 5s interval. This changes the timing model
   enough that the client and our game Torii must read/write the **pre-confirmed**
   block. See [interval-mining.md](./interval-mining.md).
