@@ -1,10 +1,16 @@
 {
+  "meta": {
+    "network": "mainnet",
+    "deployedAt": "2026-07-10T03:18:50Z",
+    "gitRef": "main",
+    "gitSha": "c0b5055e3b373182e6da4e679fb1becf8616c021"
+  },
   "settlement": {
     "network": "mainnet",
     "chainId": "SN_MAIN",
     "rpcUrl": "https://api.cartridge.gg/x/starknet/mainnet/rpc/v0_9",
     "explorer": "https://voyager.online",
-    "torii": "https://dungeon-backend.cartridge.gg/torii/score",
+    "torii": "http://localhost:8091",
     "piltover": "0x506732b3a74da0fb514c158cb866d87fc355ea37014c5cb0003cbe01e991010",
     "usdc": "0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8",
     "gameToken": "0x13bbbb742226889c73a84675c17652aa1d3759f2e7a3d2b13fb04a5c95931f2",
@@ -12,13 +18,15 @@
     "bankWorld": "0x1ba9162a90e95800ce6dbcb3f156488625c0f1d2fb17e65c6d7a2351e1d88b4",
     "bankSystem": "0x5e8cc427b7a68ad0ae327d043f94a74e97d239afabe5b5b61ad41890e13c241",
     "tokenSale": "0x475e6da62dd3604472f53ecd2e276da68fbdf4062592082132ab9cc1a917737",
-    "entry": "0x2a2cb353e12dabe2e532ba46a8c197e8be95faf551dab98a217f63e172b45e0"
+    "entry": "0x2a2cb353e12dabe2e532ba46a8c197e8be95faf551dab98a217f63e172b45e0",
+    "operator": "0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f"
   },
   "appchain": {
     "rpcUrl": "https://appchain.cartridge.gg/mainnet/rpc",
-    "explorer": "https://appchain.cartridge.gg/mainnet/rpc/explorer",
-    "torii": "https://dungeon-backend.cartridge.gg/torii/game",
+    "explorer": "https://appchain.cartridge.gg/mainnet/explorer",
+    "torii": "http://localhost:8092",
     "gameWorld": "0x7f6c1c800301783a1a5a9378a6c3cdf237ad9ae21bb715c0bf5e408a450ab6e",
-    "gameSystem": "0x6d3d2eab82c4b17ee17eeae58f9981db04a8e9beeaa887b355ce7e57f085e97"
+    "gameSystem": "0x6d3d2eab82c4b17ee17eeae58f9981db04a8e9beeaa887b355ce7e57f085e97",
+    "devAccount": "0xdcbeb1f415c0c3e8ae300f3550ff9d649c03c2aeea5ec15f9862139ac3857b"
   }
 }
