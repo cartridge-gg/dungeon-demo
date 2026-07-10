@@ -33,6 +33,47 @@ settlement) lives in cartridge-appchain.
 | Ports | torii `8091`/`8092`, frontend `3002` (appchain RPC is external) |
 | Controller | one identity signs **both chains** on the mock rollup; the enclave rollups run no paymaster, so play uses the dev signer there |
 
+## Live deployment
+
+Deployed **2026-07-10** to Starknet **mainnet** with **real proving**: the appchain is
+the `CARTRIDGE_MAINNET` **enclave** rollup — an AMD SEV-SNP confidential VM producing
+**SP1 Groth16** proofs, verified on-chain by the real `AMDTeeRegistry` (see
+[cartridge-appchain](https://github.com/cartridge-gg/cartridge-appchain)).
+
+| URL | What | Where it runs |
+| --- | --- | --- |
+| <https://dungeon-demo.cartridge.gg> | the game client | GitHub Pages ([`deploy-pages.yml`](.github/workflows/deploy-pages.yml)) |
+| <https://dungeon-backend.cartridge.gg/torii/score> | bank-world torii (Starknet mainnet) | TEE host, systemd `dungeon-torii-bank` (`:8091`) |
+| <https://dungeon-backend.cartridge.gg/torii/game> | game-world torii (appchain) | TEE host, systemd `dungeon-torii-game` (`:8092`) |
+| <https://appchain.cartridge.gg/mainnet/rpc> | appchain RPC (external) | cartridge-appchain's enclave |
+
+How it gets there: **Actions → Deploy fresh stack (TEE server)**
+([`deploy.yml`](.github/workflows/deploy.yml)). The runner SSHes to the TEE host,
+installs `.env` from the `DEPLOY_ENV` secret — which is what selects the deployment:
+appchain RPC + piltover, settlement network/RPC, operator, USDC — and runs
+[`scripts/remote/deploy.sh`](scripts/remote/deploy.sh) (teardown → contract deploys,
+**real gas** → toriis under systemd → health check). It then commits the sanitized
+manifest (`deployments/<network>.json`) + the regenerated client config
+(`deployments.json`) and dispatches the Pages rebuild, so the live client always
+tracks the latest deploy. The `PUBLIC_APPCHAIN_URL` repo variable must point at the
+same appchain as `DEPLOY_ENV`.
+
+A fresh deploy **replaces the stack in place** (one live deployment at a time). The
+previous deploy — sepolia settlement + the `CARTRIDGE_TESTNET` **mock**-proving rollup
+— is recorded in [`deployments/sepolia.json`](deployments/sepolia.json); to go back,
+swap `DEPLOY_ENV` + `PUBLIC_APPCHAIN_URL` and re-run the workflow.
+
+What real proving changes (vs the sepolia mock):
+
+- **Banking is slower by design** — a withdrawal mints GOLD only after its appchain
+  block is proven (a real SP1 proof) and settled on mainnet: minutes, not seconds.
+- **Controller play is not fee-sponsored on the appchain** — the enclave runs no
+  paymaster middleware, so play falls back to the dev signer (see
+  [Using Controller](#using-controller-optional)).
+
+Torii ops (status / logs / restart / re-index):
+[docs/deployment.md](./docs/deployment.md#managing-the-running-stack-remote--systemd).
+
 ## Prerequisites
 
 This is *not* fully one-click — settling to a real chain needs real accounts.
