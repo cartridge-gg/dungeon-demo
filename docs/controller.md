@@ -67,15 +67,16 @@ hit **Dev-mint** (a session policy) once funded, or buy with USDC.
   **Unsetting it matters**: while set, the keychain pins to `http://localhost:5070`,
   which a hidden iframe can't reach under Chrome's Local Network Access rules — the
   silent session probe then finds nothing and auto-reconnect on page load stops working.
-- **Per-chain sessions** — the keychain approves session policies per chain, and the
-  appchain leg isn't part of the login flow. The app **warms it up at connect time**
-  (`warmUpAppchainSession` in `app/src/wallet.tsx`): right after a login or silent
-  reconnect it switches the keychain to the appchain and runs `updateSession`, so the
-  consent page shows at load — not in the middle of the first move. The approved
-  policy set is fingerprinted in `localStorage` (`ccd.wallet.approved-policies`), so
-  the keychain only reopens when the policies actually changed (fresh browser, or a
-  redeploy moved the contracts). If the warm-up is cancelled or fails, nothing breaks
-  — the keychain just falls back to prompting lazily on first use.
+- **Per-chain sessions** — a session is stored per chain and its authorization
+  signature covers the chain id, so each chain needs its own consent. The app **warms
+  both up at connect time** (`warmUpSessions` in `app/src/wallet.tsx`): right after a
+  login or silent reconnect it runs the keychain's `updateSession` on the settlement
+  chain, then on the appchain, so every consent page shows at load — not in the middle
+  of the first move. Each chain's approved policy set is fingerprinted in
+  `localStorage` (`ccd.wallet.approved-policies.<chain>`), so the keychain only
+  reopens for a policy set that's new to the browser (fresh browser, or a redeploy
+  moved the contracts). If a leg is cancelled or fails, nothing breaks — that chain
+  just falls back to prompting lazily on first use.
 - **HTTPS for WebAuthn** — `./up.sh` serves `https://localhost:3002` via
   `mkcert`; passkey login refuses an untrusted cert.
 

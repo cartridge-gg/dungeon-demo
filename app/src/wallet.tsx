@@ -93,40 +93,58 @@ const policies = {
 };
 
 // ── Session warm-up ─────────────────────────────────────────────────────────────
-// The keychain approves session policies lazily, per chain: login covers the
-// settlement chain, but the appchain leg is only approved at the first appchain
-// `execute` — which lands the "update session" consent page in the middle of the
-// player's FIRST MOVE (fresh browser, or after a redeploy changed the contract
-// addresses). Surface that consent at connect time instead: switch the keychain to
-// the appchain and run its update-session flow up front, and remember which policy
-// set was approved so the keychain only opens when it actually changed.
-const POLICY_KEY = "ccd.wallet.approved-policies";
+// The keychain approves session policies lazily and PER CHAIN — a session is stored
+// under `@cartridge/session/<address>/<chain_id>` and its authorization signature
+// covers the chain id, so a settlement-chain approval cannot cover the appchain (or
+// vice versa). Left lazy, the consent page lands mid-game: the appchain's on the
+// player's FIRST MOVE. Surface both consents at connect time instead: run the
+// keychain's update-session flow for each chain up front, and remember which policy
+// set each chain approved so the keychain only opens when something actually changed
+// (fresh browser, or a redeploy moved the contracts).
+type WarmChain = "settlement" | "appchain";
+const approvedKey = (chain: WarmChain) => `ccd.wallet.approved-policies.${chain}`;
+// Pre-split marker (appchain-only warm-up) — honored so existing players aren't
+// re-prompted by the key rename.
+const LEGACY_POLICY_KEY = "ccd.wallet.approved-policies";
 // deployments.json is baked into the bundle, so this fingerprint changes exactly
 // when a redeploy changes the session-scoped contracts.
 const policyFingerprint = JSON.stringify(policies.contracts);
-async function warmUpAppchainSession(): Promise<void> {
-  if (!controllerConnector) return;
+function isApproved(chain: WarmChain): boolean {
   try {
-    if (localStorage.getItem(POLICY_KEY) === policyFingerprint) return; // already approved
+    if (localStorage.getItem(approvedKey(chain)) === policyFingerprint) return true;
+    return chain === "appchain" && localStorage.getItem(LEGACY_POLICY_KEY) === policyFingerprint;
   } catch {
-    // storage unavailable — warm up every load; updateSession is instant when current
+    return false; // storage unavailable — warm up every load
   }
-  const ctrl = controllerConnector.controller;
+}
+function markApproved(chain: WarmChain): void {
   try {
-    // Approve where the lazy prompt would otherwise strike: on the appchain. The L1
-    // signer switches back to the settlement chain itself on its next op.
-    if (!(await ctrl.switchStarknetChain(APPCHAIN_CHAIN_ID))) return;
-    const reply = await ctrl.updateSession({ policies });
-    if (!reply) return; // cancelled/failed — the keychain will re-prompt on first use
+    localStorage.setItem(approvedKey(chain), policyFingerprint);
+  } catch {
+    // no persistence — fine
+  }
+}
+async function warmUpSessions(): Promise<void> {
+  if (!controllerConnector) return;
+  const ctrl = controllerConnector.controller;
+  // Settlement first — the keychain already sits there right after login — then the
+  // appchain, which is also where it's left: the L1 signer switches back itself on
+  // its next op. Each leg is independent; a cancelled/failed one just stays lazy.
+  const legs: [WarmChain, string][] = [
+    ["settlement", CHAIN_ID],
+    ["appchain", APPCHAIN_CHAIN_ID],
+  ];
+  for (const [chain, chainId] of legs) {
+    if (isApproved(chain)) continue;
     try {
-      localStorage.setItem(POLICY_KEY, policyFingerprint);
-    } catch {
-      // no persistence — fine
+      if (!(await ctrl.switchStarknetChain(chainId))) continue;
+      const reply = await ctrl.updateSession({ policies });
+      if (reply) markApproved(chain);
+    } catch (err) {
+      // Never block login on the warm-up — worst case the prompt stays lazy.
+      // eslint-disable-next-line no-console
+      console.warn(`Controller session warm-up (${chain}) failed (keychain will prompt on first use):`, err);
     }
-  } catch (err) {
-    // Never block login on the warm-up — worst case the prompt stays lazy.
-    // eslint-disable-next-line no-console
-    console.warn("Controller session warm-up failed (keychain will prompt on first use):", err);
   }
 }
 
@@ -339,12 +357,12 @@ function WalletInner({ children }: PropsWithChildren) {
 
   const usingController = method === "controller" && !!ctrlAccount;
 
-  // Surface the session consent at connect time (login AND silent reconnect) rather
-  // than mid-game on the first move — see warmUpAppchainSession. Fingerprint-guarded,
-  // so the keychain only actually opens when the policy set is new to this browser.
+  // Surface the session consents (both chains) at connect time — login AND silent
+  // reconnect — rather than mid-game on first use; see warmUpSessions. Fingerprint-
+  // guarded per chain, so the keychain only opens for a policy set new to this browser.
   useEffect(() => {
     if (!usingController) return;
-    void warmUpAppchainSession();
+    void warmUpSessions();
   }, [usingController]);
 
   // L1 signer (buy / enter / bank). The Controller switches to the settlement chain first
