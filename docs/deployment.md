@@ -133,6 +133,13 @@ bash scripts/remote/units.sh reset torii-game      # wipe its db + re-index from
 operate or reset the appchain itself, use cartridge-appchain's tooling. A `FRESH=1 bash
 scripts/remote/deploy.sh` re-runs the economy/world deploy and wipes the torii dbs.
 
+If the toriis sit behind a reverse proxy (the live deploy routes
+`dungeon-backend.cartridge.gg/torii/*` through nginx), the proxy MUST disable
+response buffering for those locations (`proxy_buffering off;` + a long
+`proxy_read_timeout`): the client's live updates are gRPC-web **subscription
+streams**, and a buffering proxy holds the events back — every action then appears
+to take ~5s (the client's fallback poll) instead of being instant.
+
 Drive all of this from your laptop without SSHing in by hand with
 `scripts/remote/dungeonctl` (pure SSH transport to the same `units.sh` verbs):
 

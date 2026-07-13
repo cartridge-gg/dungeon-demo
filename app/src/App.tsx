@@ -963,6 +963,32 @@ export default function App() {
     };
   }, []);
 
+  // Refresh the moment one of OUR txs confirms, instead of waiting for the torii
+  // subscription push or the next 5s poll tick. One quick follow-up tick covers the
+  // small window where torii hasn't ingested the pre-confirmed state yet.
+  useEffect(() => {
+    const seen = new Set<number>();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsub = chain.subscribeTxLog((log) => {
+      let confirmed = false;
+      for (const e of log) {
+        if (e.status === "ok" && !seen.has(e.id)) {
+          seen.add(e.id);
+          confirmed = true;
+        }
+      }
+      if (confirmed) {
+        void tickRef.current();
+        clearTimeout(timer);
+        timer = setTimeout(() => void tickRef.current(), 1000);
+      }
+    });
+    return () => {
+      clearTimeout(timer);
+      unsub();
+    };
+  }, []);
+
   // Adaptive fast run-state poll. The game-world gRPC subscription only fires on SEALED
   // blocks, so with `--block-time` the active run's screen would lag ~5s — even though
   // Torii indexes the pre-confirmed block and has the new RunState within ~1s. Rather than

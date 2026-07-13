@@ -53,6 +53,21 @@ const provider = jsonRpcProvider({
   rpc: (c: Chain) => ({ nodeUrl: c.id === appchainChain.id ? APPCHAIN_RPC : SETTLEMENT_RPC }),
 });
 
+// Switch the keychain's chain only when it isn't already there. switchStarknetChain
+// is NOT a no-op on the same chain: the keychain rebuilds its whole WASM controller,
+// including a fresh chain_id fetch over the network — a wasted round trip on every
+// action once RPCs stopped being localhost. The SDK exposes the selected chain via
+// rpcUrl(), and our two chains are registered by these exact URLs.
+type Ctrl = NonNullable<ReturnType<typeof createControllerConnector>>["controller"];
+async function switchChainIfNeeded(ctrl: Ctrl, rpc: string, chainId: string): Promise<boolean> {
+  try {
+    if (ctrl.rpcUrl() === rpc) return true;
+  } catch {
+    // selected chain unknown — fall through to an explicit switch
+  }
+  return await ctrl.switchStarknetChain(chainId);
+}
+
 // Session policies: scope the Controller session to the demo's entrypoints — buy /
 // enter / bank on Sepolia and the play actions on the appchain — so they're session
 // calls rather than per-tx popups.
@@ -134,10 +149,11 @@ async function warmUpSessions(): Promise<void> {
     ["settlement", CHAIN_ID],
     ["appchain", APPCHAIN_CHAIN_ID],
   ];
+  const legRpc: Record<WarmChain, string> = { settlement: SETTLEMENT_RPC, appchain: APPCHAIN_RPC };
   for (const [chain, chainId] of legs) {
     if (isApproved(chain)) continue;
     try {
-      if (!(await ctrl.switchStarknetChain(chainId))) continue;
+      if (!(await switchChainIfNeeded(ctrl, legRpc[chain], chainId))) continue;
       const reply = await ctrl.updateSession({ policies });
       if (reply) markApproved(chain);
     } catch (err) {
@@ -371,7 +387,7 @@ function WalletInner({ children }: PropsWithChildren) {
     ? {
         execute: async (calls) => {
           const ctrl = controllerConnector!.controller;
-          await ctrl.switchStarknetChain(CHAIN_ID);
+          await switchChainIfNeeded(ctrl, SETTLEMENT_RPC, CHAIN_ID);
           return await (ctrl.account ?? ctrlAccount!).execute(calls);
         },
       }
@@ -392,7 +408,7 @@ function WalletInner({ children }: PropsWithChildren) {
           // If we proceed anyway the controller account (pinned to the settlement RPC at
           // connect time) runs the tx on Sepolia, which then fails calling an appchain
           // contract that doesn't exist there. Fail loudly instead.
-          const ok = await ctrl.switchStarknetChain(APPCHAIN_CHAIN_ID);
+          const ok = await switchChainIfNeeded(ctrl, APPCHAIN_RPC, APPCHAIN_CHAIN_ID);
           if (!ok) {
             throw new Error(
               `Controller could not switch to the appchain (${APPCHAIN_CHAIN_ID_NAME}). The keychain can't reach ` +
