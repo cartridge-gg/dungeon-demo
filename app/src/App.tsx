@@ -815,6 +815,7 @@ export default function App() {
   const [err, setErr] = useState<string | null>(null);
   const [errOpen, setErrOpen] = useState(false); // full-error modal behind the toast
   const inFlight = useRef(false);
+  const pendingTick = useRef(false); // a refresh was requested while one was in flight
 
   // Message log scroll-follow: newest renders at the bottom, so "caught up" means
   // scrolled to the bottom. When pinned there we auto-follow new entries; when the
@@ -844,19 +845,47 @@ export default function App() {
     // Gate on deployments, NOT on a connected player: the global feed/leaderboard/stats
     // are world state and load even when nothing is connected (per-player reads below are
     // guarded by `if (player)`).
-    if (!DEPLOYED || inFlight.current) return;
+    if (!DEPLOYED) return;
+    if (inFlight.current) {
+      // Don't DROP a refresh requested mid-tick (e.g. a tx confirmed while the 5s
+      // poll was in flight) — coalesce it into one follow-up run.
+      pendingTick.current = true;
+      return;
+    }
     inFlight.current = true;
+    const t0 = performance.now();
     try {
-      // Global reads (always shown, even on the disconnected starting page): world
-      // stats, the run-outcome feed, the leaderboard, and the settled/tip gauge.
-      // These come from the game world + RPC.
-      const [st, fd, lb, sb, tp] = await Promise.all([
+      // ALL reads are fired in one concurrent wave — on the hosted deployment each
+      // query pays a full network round trip, so batching them serially would add
+      // whole RTTs to every refresh. Global reads (always shown, even on the
+      // disconnected starting page): world stats, the run-outcome feed, the
+      // leaderboard, and the settled/tip gauge — from the game world + RPC.
+      const globalReads = Promise.all([
         chain.readStats(),
         chain.getOutcomeFeed(),
         chain.readLeaderboard(),
         chain.settledBlock(),
         chain.appchainBlock(),
       ]);
+      // Per-player reads only when a wallet is connected. The starting page (empty
+      // player) skips them — and the bank-world Torii (see the subscription effect) —
+      // so idle work and memory stay down. allSettled — NOT Promise.all — so one
+      // stalled/failed read can't reject the whole batch and skip the entering-exit;
+      // a failed read keeps its last rendered value. goldBalance is deliberately NOT
+      // here: it hits the settlement chain, and even fire-and-forget it stays off the
+      // awaited path.
+      const playerReads = player
+        ? Promise.allSettled([
+            chain.listRuns(player),
+            selectedRun != null ? chain.readRun(selectedRun) : Promise.resolve(null),
+            chain.readVault(player),
+            chain.getWithdrawals(player),
+            chain.getBankCount(player),
+            chain.getLastRunEnded(player),
+          ])
+        : null;
+
+      const [st, fd, lb, sb, tp] = await globalReads;
       setStats(st);
       setFeed(fd);
       setBoard(lb);
@@ -864,24 +893,8 @@ export default function App() {
       setSettled(sb);
       setTip(tp);
 
-      // Per-player reads only when a wallet is connected. The starting page (empty
-      // player) skips them — and the bank-world Torii (see the subscription effect) —
-      // so idle work and memory stay down.
-      if (player) {
-        // These are all LOCAL reads (game/bank Torii on localhost). allSettled — NOT
-        // Promise.all — so one stalled/failed read (e.g. a momentarily starved torii
-        // connection) can't reject the whole batch and skip the entering-exit. A failed
-        // read keeps its last rendered value; listRuns drives the entering-exit on its own.
-        // goldBalance is deliberately NOT here: it hits Sepolia (the only remote read in
-        // the tick), and even fire-and-forget it stays off the awaited path.
-        const [rRl, rRun, rVt, rWd, rBc, rLe] = await Promise.allSettled([
-          chain.listRuns(player),
-          selectedRun != null ? chain.readRun(selectedRun) : Promise.resolve(null),
-          chain.readVault(player),
-          chain.getWithdrawals(player),
-          chain.getBankCount(player),
-          chain.getLastRunEnded(player),
-        ]);
+      if (playerReads) {
+        const [rRl, rRun, rVt, rWd, rBc, rLe] = await playerReads;
         if (rRl.status === "fulfilled") {
           const rl = rRl.value;
           setRuns(rl);
@@ -932,6 +945,12 @@ export default function App() {
       setErr(String((e as Error).message || e));
     } finally {
       inFlight.current = false;
+      // eslint-disable-next-line no-console
+      console.debug(`[tick] refreshed in ${Math.round(performance.now() - t0)}ms`);
+      if (pendingTick.current) {
+        pendingTick.current = false;
+        void tickRef.current();
+      }
     }
   }, [player, selectedRun, wallet.method]);
 

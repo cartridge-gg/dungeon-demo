@@ -527,12 +527,21 @@ async function loggedTx(
   };
   txEntries.push(entry);
   emitTx();
+  const t0 = performance.now();
   try {
     entry.hash = await submit();
+    const t1 = performance.now();
     emitTx(); // hash known, still pending confirmation
     await confirm(entry.hash);
     entry.status = "ok";
     emitTx();
+    // Latency breakdown per action (visible at the console's Verbose level):
+    // submit = wallet/keychain round trips until the tx hash is known;
+    // confirm = receipt polling until PRE_CONFIRMED (L2) / ACCEPTED (L1).
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[tx] ${chainTag} ${label}: submit ${Math.round(t1 - t0)}ms, confirm ${Math.round(performance.now() - t1)}ms`,
+    );
     return entry.hash;
   } catch (e) {
     entry.status = "err";
