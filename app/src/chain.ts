@@ -10,7 +10,7 @@
 // state, event-message tables for the action + bank feeds) and a few raw RPC
 // reads (token balances, piltover settled height, appchain tip).
 
-import { Account, type AccountInterface, BlockTag, CallData, RpcProvider, TransactionFinalityStatus, cairo, ec, hash } from "starknet";
+import { Account, type AccountInterface, BlockTag, CallData, RpcProvider, cairo, ec, hash } from "starknet";
 import { ToriiClient } from "@dojoengine/torii-wasm";
 import deployments from "../../deployments.json";
 
@@ -56,23 +56,37 @@ const appchainProvider = new RpcProvider({ nodeUrl: APPCHAIN_RPC });
 
 // starknet.js's waitForTransaction defaults to a 5s poll interval, so a tx that's
 // actually confirmed in well under a second still blocks for one or more 5s polls.
-// Poll fast on both chains: Sepolia confirms in ~1-2s (measured).
-//
-// The appchain mines on a 5s interval (--block-time), so ACCEPTED_ON_L2 (mined into a
-// block) is up to 5s away — far too slow for click-to-click play. The appchain is a
-// local, trusted rollup, so we resolve play actions on PRE_CONFIRMED instead: the tx
-// has executed and its state writes are live in the pre-confirmed block immediately,
-// well before the block is sealed. successStates also lists the accepted states so a
-// tx that's already mined still resolves.
-const APPCHAIN_TX_WAIT = {
-  retryInterval: 200,
-  successStates: [
-    TransactionFinalityStatus.PRE_CONFIRMED,
-    TransactionFinalityStatus.ACCEPTED_ON_L2,
-    TransactionFinalityStatus.ACCEPTED_ON_L1,
-  ],
-};
+// Poll at 1s on the settlement chain (confirms in a few seconds).
 const SETTLEMENT_TX_WAIT = { retryInterval: 1000 };
+
+// Appchain receipt wait — hand-rolled for latency. The appchain mines on a 5s
+// interval (--block-time), so waiting for ACCEPTED_ON_L2 is far too slow for
+// click-to-click play; a play action is done once it's executed into the
+// PRE_CONFIRMED block. The wallet's submit response only returns after the tx is in
+// the sequencer's pool, and execution follows within ~50ms — so by the time we can
+// ask, the receipt (finality PRE_CONFIRMED or later) almost always already exists.
+// starknet.js's waitForTransaction would pay an initial retryInterval sleep plus
+// SEPARATE status and receipt queries (2+ round trips, ~900ms measured on the hosted
+// deployment); querying the receipt directly with no initial delay makes the common
+// case exactly one round trip.
+async function waitAppchainReceipt(hash: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    let receipt: { execution_status?: string; revert_reason?: string };
+    try {
+      receipt = (await appchainProvider.channel.getTransactionReceipt(hash)) as typeof receipt;
+    } catch (e) {
+      // Not found yet (or transient RPC error) — retry briefly, then surface.
+      if (Date.now() > deadline) throw e;
+      await sleep(150);
+      continue;
+    }
+    if (receipt.execution_status === "REVERTED") {
+      throw new Error(receipt.revert_reason?.trim() || `appchain tx ${hash} reverted`);
+    }
+    return;
+  }
+}
 
 // Optional dev signers. A local `up.sh` boot writes the operator + appchain dev
 // accounts into deployments.json; the committed file omits them (no secrets in the
@@ -691,9 +705,10 @@ async function appchainCall(entrypoint: string, arg: string, account?: Signer): 
         const r = await appchainAccount.execute(call, { nonce, resourceBounds });
         return r.transaction_hash;
       },
-      (h) => appchainProvider.waitForTransaction(h, APPCHAIN_TX_WAIT),
+      waitAppchainReceipt,
     );
-    await sleep(150); // give Torii a beat to index the resulting model/event write
+    // No settle-delay for Torii here: the confirm-triggered refresh (App.tsx) ticks
+    // immediately and once more ~1s later, covering Torii's ingest window.
     return transaction_hash;
   });
 }
