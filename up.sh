@@ -71,9 +71,8 @@ for bin in sozo torii scarb; do
 done
 echo "→ appchain (external): $APPCHAIN_RPC_URL"
 echo "→ settlement: $SETTLEMENT_NAME ($SETTLEMENT_RPC_URL)"
-echo "→ Controller support depends on the appchain: the mock rollup runs the paymaster +"
-echo "   Controller middleware; the enclave rollups do not (play falls back to the dev"
-echo "   account signer). See docs/controller.md."
+echo "→ the appchain rollups (mock and enclave) run the paymaster + Controller middleware —"
+echo "   log in with a Cartridge Controller (hosted keychain). See docs/controller.md."
 
 TORII_SCORE_PID=""; TORII_GAME_PID=""
 cleanup() {

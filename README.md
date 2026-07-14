@@ -31,7 +31,7 @@ settlement) lives in cartridge-appchain.
 | External dependency | **Circle USDC** on the settlement layer |
 | Gameplay | a dungeon run, **one tx per action**; vault many runs, bank once |
 | Ports | torii `8091`/`8092`, frontend `3002` (appchain RPC is external) |
-| Controller | one identity signs **both chains** on the mock rollup; the enclave rollups run no paymaster, so play uses the dev signer there |
+| Controller | one identity signs **both chains** (hosted keychain; play is paymaster-sponsored on the appchain) |
 
 ## Live deployment
 
@@ -67,9 +67,9 @@ What real proving changes (vs the sepolia mock):
 
 - **Banking is slower by design** — a withdrawal mints GOLD only after its appchain
   block is proven (a real SP1 proof) and settled on mainnet: minutes, not seconds.
-- **Controller play is not fee-sponsored on the appchain** — the enclave runs no
-  paymaster middleware, so play falls back to the dev signer (see
-  [Using Controller](#using-controller-optional)).
+- **First action after an idle period can be slow** — the Controller keychain
+  iframe re-hydrates after the browser freezes it, so the first move pays a
+  cold-start (seconds); steady-state actions run ~1s.
 
 Torii ops (status / logs / restart / re-index):
 [docs/deployment.md](./docs/deployment.md#managing-the-running-stack-remote--systemd).
@@ -134,10 +134,9 @@ Nothing signs by default — **log in** (the lobby button) with a
 [Cartridge Controller](https://github.com/cartridge-gg/controller), ONE identity that
 signs on **both chains**: buy / enter / bank on the real settlement network *and* the
 dungeon play actions on the external appchain, at the same address. Caveat by rollup:
-the **mock** rollup is fully Controller-capable (paymaster + Controller middleware);
-the **enclave** rollups (including the live `CARTRIDGE_MAINNET`) run **no paymaster**,
-so Controller play actions aren't fee-sponsored there and play falls back to the dev
-signer. `./up.sh` declares the Controller account class on the appchain and serves the
+both the mock and the current enclave images run the paymaster + Controller
+middleware, so play actions are session-signed and fee-sponsored on the appchain.
+`./up.sh` declares the Controller account class on the appchain and serves the
 client over HTTPS via `mkcert`. Log in with the **hosted keychain** (x.cartridge.gg) by
 default, or a self-hosted keychain as a fully-local fallback; fund the Controller with
 a little STRK on the settlement network. Full walkthrough:

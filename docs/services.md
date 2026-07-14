@@ -44,9 +44,9 @@ katana --tee mock --dev --dev.no-fee --block-time 5000 \
 - `--dev --dev.no-fee` — fees off (so play actions are free); the chain id is
   `CARTRIDGE_MAINNET` / `CARTRIDGE_TESTNET` per deployment.
 - The mainnet deployment runs in an **SEV-SNP enclave** (`--tee sev-snp`) with real
-  SP1 proofs — and **without** the paymaster/Controller middleware (no
-  `paymaster-service` in the enclave image), so Controller play actions aren't
-  fee-sponsored there; the dev account signs play by default.
+  SP1 proofs. The current TEE-VM image ships the paymaster/Controller middleware
+  too, so Controller play (`cartridge_addExecuteOutsideTransaction`) is
+  fee-sponsored on the enclave rollup just like on the mock.
 - `--block-time 5000` — mine on a steady 5s interval. This changes the timing model
   enough that the client and our game Torii must read/write the **pre-confirmed**
   block. See [interval-mining.md](./interval-mining.md).
