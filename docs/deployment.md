@@ -115,9 +115,13 @@ wait for settlement → bank. The [client chapter](./client.md) shows the calls.
 
 ## Managing the running stack (remote / systemd)
 
-On a server our long-lived services are just the **two toriis** under systemd, one
-unit each (`dungeon-torii-bank`, `dungeon-torii-game`), supervised by
-`scripts/remote/units.sh` (`Restart=always`, enabled on boot). The appchain is external
+On a server our long-lived services are just the **two toriis per stack** under
+systemd (`dungeon-torii-bank`, `dungeon-torii-game`; a non-primary stack suffixes its
+name — e.g. `dungeon-torii-bank-sepolia` — and uses its own port block, see
+`DUNGEON_STACK` in `.env.example`), supervised by `scripts/remote/units.sh`
+(`Restart=always`, enabled on boot). Every `units.sh` verb is scoped to the stack of
+the checkout it runs from (its `.env`), so operating one stack never touches the
+other. The appchain is external
 (cartridge-appchain) — it's supervised over there, not here. Day-to-day ops go through
 that script — it's the single source of truth:
 
@@ -145,6 +149,7 @@ Drive all of this from your laptop without SSHing in by hand with
 
 ```bash
 export DUNGEON_HOST=user@server                    # DUNGEON_DIR defaults to ~/dungeon-deploy/dungeon-demo
+# For the sepolia stack: export DUNGEON_DIR='$HOME/dungeon-deploy/dungeon-demo-sepolia'
 scripts/remote/dungeonctl logs -f                  # follow all services from here
 scripts/remote/dungeonctl reset torii-bank
 scripts/remote/dungeonctl restart torii-game

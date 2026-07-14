@@ -40,12 +40,21 @@ the `CARTRIDGE_MAINNET` **enclave** rollup — an AMD SEV-SNP confidential VM pr
 **SP1 Groth16** proofs, verified on-chain by the real `AMDTeeRegistry` (see
 [cartridge-appchain](https://github.com/cartridge-gg/cartridge-appchain)).
 
+Two stacks run side by side (`DUNGEON_STACK` namespaces units + ports; see
+`.env.example`): **mainnet** (the primary) and **sepolia**, which targets the sepolia
+**TEE enclave** rollup (`CARTRIDGE_TESTNET`, real proving, settling to Starknet
+Sepolia). The client serves both — mainnet by default, sepolia via
+`?network=sepolia`.
+
 | URL | What | Where it runs |
 | --- | --- | --- |
-| <https://dungeon-demo.cartridge.gg> | the game client | GitHub Pages ([`deploy-pages.yml`](.github/workflows/deploy-pages.yml)) |
+| <https://dungeon-demo.cartridge.gg> | the game client (mainnet; `?network=sepolia` for the sepolia stack) | GitHub Pages ([`deploy-pages.yml`](.github/workflows/deploy-pages.yml)) |
 | <https://dungeon-backend.cartridge.gg/torii/score> | bank-world torii (Starknet mainnet) | TEE host, systemd `dungeon-torii-bank` (`:8091`) |
-| <https://dungeon-backend.cartridge.gg/torii/game> | game-world torii (appchain) | TEE host, systemd `dungeon-torii-game` (`:8092`) |
-| <https://appchain.cartridge.gg/mainnet/rpc> | appchain RPC (external) | cartridge-appchain's enclave |
+| <https://dungeon-backend.cartridge.gg/torii/game> | game-world torii (mainnet appchain) | TEE host, systemd `dungeon-torii-game` (`:8092`) |
+| <https://dungeon-backend.cartridge.gg/sepolia/torii/score> | bank-world torii (Starknet Sepolia) | TEE host, systemd `dungeon-torii-bank-sepolia` (`:8093`) |
+| <https://dungeon-backend.cartridge.gg/sepolia/torii/game> | game-world torii (sepolia appchain) | TEE host, systemd `dungeon-torii-game-sepolia` (`:8094`) |
+| <https://appchain.cartridge.gg/mainnet/rpc> | mainnet appchain RPC (external) | cartridge-appchain's mainnet enclave |
+| <https://appchain.cartridge.gg/sepolia/rpc> | sepolia appchain RPC (external) | cartridge-appchain's sepolia enclave |
 
 How it gets there: **Actions → Deploy fresh stack (TEE server)**
 ([`deploy.yml`](.github/workflows/deploy.yml)). The runner SSHes to the TEE host,
@@ -58,10 +67,13 @@ manifest (`deployments/<network>.json`) + the regenerated client config
 tracks the latest deploy. The `PUBLIC_APPCHAIN_URL` repo variable must point at the
 same appchain as `DEPLOY_ENV`.
 
-A fresh deploy **replaces the stack in place** (one live deployment at a time). The
-previous deploy — sepolia settlement + the `CARTRIDGE_TESTNET` **mock**-proving rollup
-— is recorded in [`deployments/sepolia.json`](deployments/sepolia.json); to go back,
-swap `DEPLOY_ENV` + `PUBLIC_APPCHAIN_URL` and re-run the workflow.
+A fresh deploy **replaces its own stack in place** and never touches the other. The
+workflow inputs select the stack: the mainnet stack is the no-input default; the
+sepolia stack runs with `stack=sepolia`, `deploy_dir=dungeon-deploy/dungeon-demo-sepolia`,
+`env_secret=DEPLOY_ENV_SEPOLIA`, `public_backend_url=…/sepolia`,
+`public_appchain_url=…/sepolia`. The primary stack's client config is
+`deployments.json`; secondary stacks land in `deployments.<network>.json` and the
+client picks by `?network=`.
 
 What real proving changes (vs the sepolia mock):
 

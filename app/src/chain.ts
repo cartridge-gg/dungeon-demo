@@ -12,7 +12,14 @@
 
 import { Account, type AccountInterface, BlockTag, CallData, RpcProvider, cairo, ec, hash } from "starknet";
 import { ToriiClient } from "@dojoengine/torii-wasm";
-import deployments from "../../deployments.json";
+import mainnetDeployments from "../../deployments.json";
+import sepoliaDeployments from "../../deployments.sepolia.json";
+
+// Network selection: the bundle carries every deployed stack's config. The primary
+// (mainnet) is the default; `?network=sepolia` picks the sepolia stack (the
+// CARTRIDGE_TESTNET TEE-enclave appchain settling to Starknet Sepolia).
+const deployments =
+  new URLSearchParams(window.location.search).get("network") === "sepolia" ? sepoliaDeployments : mainnetDeployments;
 
 // Settlement network: Sepolia by default, or mainnet — set via SETTLEMENT_NETWORK at
 // deploy time and recorded in deployments.json. Everything below is network-agnostic.

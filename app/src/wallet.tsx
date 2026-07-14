@@ -117,16 +117,20 @@ const policies = {
 // set each chain approved so the keychain only opens when something actually changed
 // (fresh browser, or a redeploy moved the contracts).
 type WarmChain = "settlement" | "appchain";
-const approvedKey = (chain: WarmChain) => `ccd.wallet.approved-policies.${chain}`;
-// Pre-split marker (appchain-only warm-up) — honored so existing players aren't
-// re-prompted by the key rename.
+// Markers are namespaced by settlement network: the client can serve several
+// deployments (?network=…) from one origin, and each has its own policy set.
+const approvedKey = (chain: WarmChain) => `ccd.wallet.approved-policies.${SETTLEMENT_NETWORK}.${chain}`;
+// Pre-multi-network markers — honored (mainnet only, where they were written) so
+// existing players aren't re-prompted by the key renames.
 const LEGACY_POLICY_KEY = "ccd.wallet.approved-policies";
-// deployments.json is baked into the bundle, so this fingerprint changes exactly
+// The bundled config is baked into the bundle, so this fingerprint changes exactly
 // when a redeploy changes the session-scoped contracts.
 const policyFingerprint = JSON.stringify(policies.contracts);
 function isApproved(chain: WarmChain): boolean {
   try {
     if (localStorage.getItem(approvedKey(chain)) === policyFingerprint) return true;
+    if (SETTLEMENT_NETWORK !== "mainnet") return false;
+    if (localStorage.getItem(`${LEGACY_POLICY_KEY}.${chain}`) === policyFingerprint) return true;
     return chain === "appchain" && localStorage.getItem(LEGACY_POLICY_KEY) === policyFingerprint;
   } catch {
     return false; // storage unavailable — warm up every load
