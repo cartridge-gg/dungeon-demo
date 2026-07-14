@@ -1,16 +1,10 @@
 {
-  "meta": {
-    "network": "sepolia",
-    "deployedAt": "2026-07-14T17:52:38Z",
-    "gitRef": "main",
-    "gitSha": "36d834deeead91bf3837ef2c05005d581a1a02ae"
-  },
   "settlement": {
     "network": "sepolia",
     "chainId": "SN_SEPOLIA",
     "rpcUrl": "https://api.cartridge.gg/x/starknet/sepolia/rpc/v0_9",
     "explorer": "https://sepolia.voyager.online",
-    "torii": "http://localhost:8093",
+    "torii": "https://dungeon-backend.cartridge.gg/sepolia/torii/score",
     "piltover": "0x6e1745e4c94abba8bf4dbde2b4d10f2e26495a085f451422e3ea52ba90950a1",
     "usdc": "0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343",
     "gameToken": "0x3c26205cfec9cb739a25f9f663baf801f438e9d2405bac891d6929ea29253f6",
@@ -18,16 +12,14 @@
     "bankWorld": "0x5e11aa000bed113e5a6461d04eabe0b42ac98c971648a4b0d73b838c4e095ab",
     "bankSystem": "0x473e74baf6249f116c01ce1bb130cee2d5b99cffdd039022cfd534426301a62",
     "tokenSale": "0x1a3472f560f6a4765fd4cce4601bf75815dd8d6bd8a6e60a4ea452fc6a172f5",
-    "entry": "0x21201b5e8bb1afc1efdee390b2f8a67381f60237f140bf306fa5f48f2cf1490",
-    "operator": "0x00ddeE62091d2F9De6FF534a951a6202372Bfe1f3803ae5c1a73010F6AF4248f"
+    "entry": "0x21201b5e8bb1afc1efdee390b2f8a67381f60237f140bf306fa5f48f2cf1490"
   },
   "appchain": {
     "rpcUrl": "https://appchain.cartridge.gg/sepolia/rpc",
-    "explorer": "https://appchain.cartridge.gg/sepolia/explorer",
-    "torii": "http://localhost:8094",
+    "explorer": "https://appchain.cartridge.gg/sepolia/rpc/explorer",
+    "torii": "https://dungeon-backend.cartridge.gg/sepolia/torii/game",
     "chainId": "CARTRIDGE_TESTNET",
     "gameWorld": "0x7f6c1c800301783a1a5a9378a6c3cdf237ad9ae21bb715c0bf5e408a450ab6e",
-    "gameSystem": "0x6d3d2eab82c4b17ee17eeae58f9981db04a8e9beeaa887b355ce7e57f085e97",
-    "devAccount": "0xdcbeb1f415c0c3e8ae300f3550ff9d649c03c2aeea5ec15f9862139ac3857b"
+    "gameSystem": "0x6d3d2eab82c4b17ee17eeae58f9981db04a8e9beeaa887b355ce7e57f085e97"
   }
 }
