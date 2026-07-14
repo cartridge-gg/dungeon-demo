@@ -25,6 +25,17 @@ RUN_DIR="${RUN_DIR:-$DEMO_DIR/.run}"
 DEPLOY_USER="$(id -un)"
 SYSTEMD_DIR=/etc/systemd/system
 PFX=dungeon
+# Stack namespace (see scripts/services/_common.sh): DUNGEON_STACK suffixes every
+# unit name so two deployments (e.g. mainnet + sepolia) coexist on one host without
+# either stack touching the other's units. Read from the env, falling back to this
+# checkout's .env; empty = the primary (mainnet) stack with the legacy names.
+if [[ -z "${DUNGEON_STACK:-}" && -f "$DEMO_DIR/.env" ]]; then
+  DUNGEON_STACK="$(sed -n 's/^DUNGEON_STACK=//p' "$DEMO_DIR/.env" | tail -1 | tr -d '"' | tr -d "'")"
+fi
+DUNGEON_STACK="${DUNGEON_STACK:-}"
+SUFFIX="${DUNGEON_STACK:+-$DUNGEON_STACK}"
+# Canonical unit file name for a service short-name (torii-bank → dungeon-torii-bank[-stack].service).
+_unit() { echo "${PFX}-$1${SUFFIX}.service"; }
 # Units get a minimal env; PATH covers torii/sozo (+ ~/.local, ~/.bun). systemd does
 # not expand ~ or $HOME, so spell them out.
 RUNTIME_PATH="$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin"
@@ -60,26 +71,29 @@ torii-game|torii-game.sh||Dungeon torii — game world (external appchain)
 EOF
 }
 
-# Stop+disable+delete EVERY dungeon-*.service (current or stale, e.g. an old
-# standalone dungeon-katana), then reload. Idempotent.
+# Stop+disable+delete THIS STACK's units, then reload. Scoped to the exact unit
+# names (never a dungeon-* glob) so coexisting stacks are untouched. Idempotent.
 units_remove_all() {
-  local f u found=0
-  while IFS= read -r f; do
-    found=1; u="$(basename "$f")"
+  local n u found=0
+  for n in "${UNIT_NAMES[@]}"; do
+    u="$(_unit "$n")"
+    [[ -f "$SYSTEMD_DIR/$u" ]] || continue
+    found=1
     sudo systemctl disable --now "$u" >/dev/null 2>&1 || true
-    sudo rm -f "$f"
-  done < <(find "$SYSTEMD_DIR" -maxdepth 1 -name "${PFX}-*.service" 2>/dev/null)
+    sudo rm -f "$SYSTEMD_DIR/$u"
+  done
   [[ "$found" == 1 ]] && sudo systemctl daemon-reload || true
 }
 
-# Stop+disable existing dungeon units WITHOUT deleting (deploy teardown: keep them
+# Stop+disable THIS STACK's units WITHOUT deleting (deploy teardown: keep them
 # from auto-restarting while we free ports / redeploy; install rewrites them after).
 units_stop_all() {
-  local f u
-  while IFS= read -r f; do
-    u="$(basename "$f")"
+  local n u
+  for n in "${UNIT_NAMES[@]}"; do
+    u="$(_unit "$n")"
+    [[ -f "$SYSTEMD_DIR/$u" ]] || continue
     sudo systemctl disable --now "$u" >/dev/null 2>&1 || true
-  done < <(find "$SYSTEMD_DIR" -maxdepth 1 -name "${PFX}-*.service" 2>/dev/null)
+  done
 }
 
 # (Re)write the unit files from the table — replacing any stale set first.
@@ -89,9 +103,9 @@ units_install() {
   local name script after desc
   while IFS='|' read -r name script after desc; do
     [[ -z "$name" ]] && continue
-    sudo tee "$SYSTEMD_DIR/${PFX}-${name}.service" >/dev/null <<UNIT
+    sudo tee "$SYSTEMD_DIR/$(_unit "$name")" >/dev/null <<UNIT
 [Unit]
-Description=$desc
+Description=$desc${DUNGEON_STACK:+ [$DUNGEON_STACK]}
 After=network-online.target$after
 Wants=network-online.target
 
@@ -109,23 +123,23 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 UNIT
-    usay "  ${PFX}-${name}.service"
+    usay "  $(_unit "$name")"
   done < <(_unit_table)
   sudo systemctl daemon-reload
 }
 
-units_start()   { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl start   "${PFX}-$n.service"; done; }
-units_stop()    { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl stop    "${PFX}-$n.service"; done; }
-units_restart() { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl restart "${PFX}-$n.service"; done; }
-units_enable()  { local n u=(); for n in "${UNIT_NAMES[@]}"; do u+=("${PFX}-$n.service"); done; sudo systemctl enable "${u[@]}" >/dev/null; }
+units_start()   { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl start   "$(_unit "$n")"; done; }
+units_stop()    { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl stop    "$(_unit "$n")"; done; }
+units_restart() { local n; for n in "$@"; do _is_service "$n" || return 1; sudo systemctl restart "$(_unit "$n")"; done; }
+units_enable()  { local n u=(); for n in "${UNIT_NAMES[@]}"; do u+=("$(_unit "$n")"); done; sudo systemctl enable "${u[@]}" >/dev/null; }
 
 # status [name…] — given names, just those; no args → all units (callers rely on this).
 units_status() {
   local u=()
   if [[ $# -gt 0 ]]; then
-    local n; for n in "$@"; do _is_service "$n" || return 1; u+=("${PFX}-$n"); done
+    local n; for n in "$@"; do _is_service "$n" || return 1; u+=("$(_unit "$n")"); done
   else
-    local n; for n in "${UNIT_NAMES[@]}"; do u+=("${PFX}-$n"); done
+    local n; for n in "${UNIT_NAMES[@]}"; do u+=("$(_unit "$n")"); done
   fi
   sudo systemctl --no-pager --output=short status "${u[@]}" 2>&1 || true
 }
@@ -140,22 +154,23 @@ units_reset() {
   _is_service "$n" || return 1
   local db; db="$(_db_dir "$n")" || { echo "error: no db mapping for '$n'" >&2; return 1; }
   usay "resetting $n (wipe $db + re-index)…"
-  sudo systemctl stop "${PFX}-$n.service"
+  sudo systemctl stop "$(_unit "$n")"
   rm -rf "$db"
-  sudo systemctl start "${PFX}-$n.service"
-  usay "  $n restarted — re-indexing; follow with: journalctl -u ${PFX}-$n -f"
+  sudo systemctl start "$(_unit "$n")"
+  usay "  $n restarted — re-indexing; follow with: journalctl -u $(_unit "$n") -f"
 }
 
 # logs [name] [-f] [-n N] — journalctl for one service, or all (-u 'dungeon-*'). No
 # sudo: the deploy user reads its own units' journal (deploy.sh's health check too).
 units_logs() {
-  local sel=(-u "${PFX}-*") rest=()   # quoted pattern → journalctl globs it, not the shell
+  local sel=() rest=() n
+  for n in "${UNIT_NAMES[@]}"; do sel+=(-u "$(_unit "$n")"); done  # this stack only
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -f|--follow) rest+=(-f) ;;
       -n) rest+=(-n "${2:-}"); shift ;;
       -*) rest+=("$1") ;;
-      *) _is_service "$1" || return 1; sel=(-u "${PFX}-$1") ;;
+      *) _is_service "$1" || return 1; sel=(-u "$(_unit "$1")") ;;
     esac
     shift
   done
@@ -168,7 +183,9 @@ units_logs() {
 units_up() {
   units_install
   usay "starting toriis…"; units_start torii-bank torii-game
-  until curl -s -o /dev/null http://localhost:8092/ 2>/dev/null; do sleep 0.5; done
+  # Game-torii port per stack — keep in sync with scripts/services/_common.sh.
+  local game_port=8092; [[ "$DUNGEON_STACK" == "sepolia" ]] && game_port=8094
+  until curl -s -o /dev/null "http://localhost:$game_port/" 2>/dev/null; do sleep 0.5; done
   usay "enabling units for boot…"; units_enable
   usay "done."; units_status
 }

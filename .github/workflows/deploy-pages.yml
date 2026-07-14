@@ -6,6 +6,7 @@ on:
     paths:
       - "app/**"
       - "deployments.json"
+      - "deployments.*.json"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 

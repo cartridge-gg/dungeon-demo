@@ -17,17 +17,28 @@ REPO_ROOT="$(cd "$DEMO_DIR/../.." && pwd)"
 RUN_DIR="$DEMO_DIR/.run"
 DEPLOYMENTS="$DEMO_DIR/deployments.json"
 
-# Ports — keep in sync with up.sh.
-TORII_SCORE_HTTP=8091; TORII_SCORE_GRPC=50091; TORII_SCORE_RELAY=9191
-TORII_GAME_HTTP=8092;  TORII_GAME_GRPC=50092;  TORII_GAME_RELAY=9194
-FRONTEND_PORT=3002
-
 svc_fail() { echo "error: $1" >&2; exit 1; }
 
-# .env → operator/saya accounts, USDC, settlement RPC.
+# .env → operator/saya accounts, USDC, settlement RPC (+ the stack name below).
 [[ -f "$DEMO_DIR/.env" ]] || svc_fail "no .env — copy .env.example to .env (see up.sh)."
 set -a; # shellcheck disable=SC1091
 source "$DEMO_DIR/.env"; set +a
+
+# ── Deployment stack ────────────────────────────────────────────────────────────
+# DUNGEON_STACK (.env) namespaces this deployment so several can coexist on one
+# host: it suffixes the systemd unit names (scripts/remote/units.sh) and selects a
+# disjoint port block. Empty = the primary stack (legacy names/ports — the live
+# mainnet deployment). Adding a stack = adding a port row here (+ nginx routes).
+DUNGEON_STACK="${DUNGEON_STACK:-}"
+UNIT_SUFFIX="${DUNGEON_STACK:+-$DUNGEON_STACK}"
+case "$DUNGEON_STACK" in
+  "")      TORII_SCORE_HTTP=8091; TORII_SCORE_GRPC=50091; TORII_SCORE_RELAY=9191
+           TORII_GAME_HTTP=8092;  TORII_GAME_GRPC=50092;  TORII_GAME_RELAY=9194 ;;
+  sepolia) TORII_SCORE_HTTP=8093; TORII_SCORE_GRPC=50093; TORII_SCORE_RELAY=9291
+           TORII_GAME_HTTP=8094;  TORII_GAME_GRPC=50094;  TORII_GAME_RELAY=9294 ;;
+  *) svc_fail "unknown DUNGEON_STACK '$DUNGEON_STACK' — add its port block to scripts/services/_common.sh." ;;
+esac
+FRONTEND_PORT=3002
 
 # Settlement network derivation (mirrors up.sh).
 SETTLEMENT_NETWORK="${SETTLEMENT_NETWORK:-sepolia}"

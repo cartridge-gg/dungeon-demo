@@ -16,10 +16,27 @@ on:
         description: "Clone path on the server, relative to the SSH user's home"
         type: string
         default: "dungeon-deploy/dungeon-demo"
+      stack:
+        description: "Stack name (DUNGEON_STACK) — empty = the primary (mainnet) stack. Must match the stack in the env secret; pick a distinct deploy_dir per stack."
+        type: string
+        default: ""
+      env_secret:
+        description: "Name of the repo secret holding this stack's .env (e.g. DEPLOY_ENV_SEPOLIA)"
+        type: string
+        default: "DEPLOY_ENV"
+      public_backend_url:
+        description: "Public base for this stack's toriis (default: the PUBLIC_BACKEND_URL var / dungeon-backend.cartridge.gg)"
+        type: string
+        default: ""
+      public_appchain_url:
+        description: "Public appchain host for this stack (default: the PUBLIC_APPCHAIN_URL var / the mainnet enclave)"
+        type: string
+        default: ""
 
-# One deploy at a time; never interrupt an in-flight one (it spends real gas).
+# One deploy at a time PER STACK; never interrupt an in-flight one (it spends real
+# gas). Different stacks touch disjoint units/ports/dirs, so they may run in parallel.
 concurrency:
-  group: deploy
+  group: deploy-${{ inputs.stack || 'primary' }}
   cancel-in-progress: false
 
 # contents: write so the deploy can commit the sanitized manifest/client config back;
@@ -38,6 +55,7 @@ jobs:
       SSH_HOST: ${{ secrets.TEE_SSH_HOST }}
       SSH_USER: ${{ secrets.TEE_SSH_USER }}
       DEPLOY_DIR: ${{ inputs.deploy_dir }}
+      STACK: ${{ inputs.stack }}
       PREPARE_ONLY: ${{ inputs.prepare_only && '1' || '0' }}
       REPO_REF: ${{ github.ref_name }}
     steps:
@@ -76,14 +94,17 @@ jobs:
           # dbs itself for a fresh re-index. The appchain is external (cartridge-appchain),
           # so there's no chain state here. .git is excluded (the deploy reads
           # GIT_REF/GIT_SHA from the env).
-          ssh target "sudo systemctl stop 'dungeon-*.service' 2>/dev/null || true; mkdir -p \"\$HOME/$DEPLOY_DIR\""
+          # Scope the pre-sync stop to THIS stack's units — a dungeon-* glob would
+          # take down the coexisting stack's toriis too.
+          SUF="${STACK:+-$STACK}"
+          ssh target "sudo systemctl stop \"dungeon-torii-bank$SUF.service\" \"dungeon-torii-game$SUF.service\" 2>/dev/null || true; mkdir -p \"\$HOME/$DEPLOY_DIR\""
           rsync -az --delete \
             --exclude '.git' --exclude '.run' --exclude 'node_modules' --exclude 'app/node_modules' \
             -e ssh ./ "target:$DEPLOY_DIR/"
 
       - name: Install .env on the server
         env:
-          DEPLOY_ENV: ${{ secrets.DEPLOY_ENV }}
+          DEPLOY_ENV: ${{ secrets[inputs.env_secret] }}
         run: |
           # Pipe the secret to the server over stdin so it never lands in a command
           # line, a log line, or a file on the GitHub runner.
@@ -99,11 +120,11 @@ jobs:
         env:
           # Public reverse-proxy base for the loopback-bound services (nginx vhost
           # on the server). Override with a repo variable if the domain changes.
-          PUBLIC_BACKEND_URL: ${{ vars.PUBLIC_BACKEND_URL || 'https://dungeon-backend.cartridge.gg' }}
+          PUBLIC_BACKEND_URL: ${{ inputs.public_backend_url || vars.PUBLIC_BACKEND_URL || 'https://dungeon-backend.cartridge.gg' }}
           # Appchain RPC host (shared deployment) — separate from the app backend/toriis.
           # Must match the appchain in DEPLOY_ENV (mainnet enclave by default; the
           # sepolia mock lives at https://sepolia-appchain.cartridge.gg).
-          PUBLIC_APPCHAIN_URL: ${{ vars.PUBLIC_APPCHAIN_URL || 'https://appchain.cartridge.gg/mainnet' }}
+          PUBLIC_APPCHAIN_URL: ${{ inputs.public_appchain_url || vars.PUBLIC_APPCHAIN_URL || 'https://appchain.cartridge.gg/mainnet' }}
         run: |
           # Pull the sanitized manifest dir off the server (no private keys — see
           # the manifest() step in scripts/remote/deploy.sh) into this checkout.
@@ -111,10 +132,13 @@ jobs:
           # Regenerate the client config (deployments.json) the Vite app bundles:
           # fresh addresses from the manifest + the public backend URLs.
           network=$(ssh target "node -e 'console.log(require(process.env.HOME + \"/$DEPLOY_DIR/deployments.json\").settlement.network)'")
-          node scripts/gen-client-deployments.mjs "deployments/$network.json" "$PUBLIC_BACKEND_URL" deployments.json "$PUBLIC_APPCHAIN_URL"
+          # The primary stack owns the default client config (deployments.json);
+          # secondary stacks get their own file, selected in the app via ?network=.
+          out="deployments.json"; [ -n "$STACK" ] && out="deployments.$network.json"
+          node scripts/gen-client-deployments.mjs "deployments/$network.json" "$PUBLIC_BACKEND_URL" "$out" "$PUBLIC_APPCHAIN_URL"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add deployments deployments.json
+          git add deployments "$out"
           if git diff --cached --quiet; then
             echo "→ manifest + client config unchanged — nothing to commit."
             echo "changed=false" >> "$GITHUB_OUTPUT"
