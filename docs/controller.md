@@ -60,9 +60,13 @@ hit **Dev-mint** (a session policy) once funded, or buy with USDC.
 - **Pre-wildcard Controller account** — modern keychains use *wildcard* sessions, which
   need account class **≥ v1.0.9**. If your Controller was created on an older class, its
   fresh appchain deploy lands at that old version and play reverts with
-  `session/length-mismatch`. Upgrade the appchain account: set `VITE_DEFAULT_APPCHAIN=1`
-  in `app/.env.local` so the keychain sits on the appchain, Connect → it shows an
-  **Upgrade** screen → upgrade → unset the var. (The upgrade gate reads the *current*
+  `session/length-mismatch` — and pre-v1.0.6 classes lack `execute_from_outside_v3`,
+  so paymaster-sponsored play fails with `ENTRYPOINT_NOT_FOUND`. Upgrades are
+  **per chain**: an account upgraded on one appchain still deploys at its old class
+  on the next one. Upgrade the appchain account: on the hosted client add
+  `&default_appchain=1` to the URL (locally: `VITE_DEFAULT_APPCHAIN=1` in
+  `app/.env.local`) so the keychain sits on the appchain, Connect → it shows an
+  **Upgrade** screen → upgrade → drop the param/var. (The upgrade gate reads the *current*
   chain, so on Sepolia — already upgraded — it never offers the appchain upgrade.)
   **Unsetting it matters**: while set, the keychain pins to `http://localhost:5070`,
   which a hidden iframe can't reach under Chrome's Local Network Access rules — the

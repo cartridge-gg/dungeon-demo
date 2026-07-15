@@ -174,11 +174,18 @@ function createControllerConnector(): ControllerConnector | null {
   try {
     return new ControllerConnector({
       chains: [{ rpcUrl: SETTLEMENT_RPC }, { rpcUrl: APPCHAIN_RPC }],
-      // Normally the settlement chain. Set VITE_DEFAULT_APPCHAIN=1 to make the keychain
-      // sit on the appchain — needed once to surface the keychain's account-UPGRADE
-      // screen for the appchain account (its upgrade gate reads the controller's current
-      // chain; on the settlement chain the account already reads as up-to-date).
-      defaultChainId: import.meta.env.VITE_DEFAULT_APPCHAIN === "1" ? APPCHAIN_CHAIN_ID : CHAIN_ID,
+      // Normally the settlement chain. Set VITE_DEFAULT_APPCHAIN=1 (build) or add
+      // ?default_appchain=1 (hosted client) to make the keychain sit on the appchain —
+      // needed once per chain to surface the keychain's account-UPGRADE screen for the
+      // appchain account: a Controller created on an old class auto-deploys at that
+      // class on every fresh chain (e.g. v1.0.4 lacks execute_from_outside_v3 → the
+      // paymaster fails with ENTRYPOINT_NOT_FOUND), and the upgrade gate only reads
+      // the controller's CURRENT chain. Log in with the param once, upgrade, drop it.
+      defaultChainId:
+        import.meta.env.VITE_DEFAULT_APPCHAIN === "1" ||
+        new URLSearchParams(window.location.search).get("default_appchain") === "1"
+          ? APPCHAIN_CHAIN_ID
+          : CHAIN_ID,
       url: import.meta.env.VITE_KEYCHAIN_URL || undefined,
       policies,
     });
